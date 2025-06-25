@@ -916,7 +916,6 @@ function tap_init_gateway_class() {
 				$currencyCode = $order->get_currency();
 			   $orderid = $order->get_id();
 			   $order_items = $order->get_items();
-				$table_prefix = $wpdb->prefix;
 				if ($this->payment_mode	== 'authorize') {
 		   		$charge_url = 'https://api.tap.company/v2/authorize';
 		   	}
