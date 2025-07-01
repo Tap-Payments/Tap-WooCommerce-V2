@@ -23,4 +23,4 @@
 
 **Step 6.** Provide the **Publishable Key** & **Private Key** recevied from Tap, configure the Payment Mode and Ui Mode as per need and save the configuration by clicking on **Save Changes** button.
 
-![Admin Configuration](https://github.com/user-attachments/assets/d98599ce-d196-4317-ae95-d66dff582d08")
+![Admin Configuration]([https://github.com/user-attachments/assets/d98599ce-d196-4317-ae95-d66dff582d08](https://github-production-user-asset-6210df.s3.amazonaws.com/36191420/460932843-d98599ce-d196-4317-ae95-d66dff582d08.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20250701%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20250701T074841Z&X-Amz-Expires=300&X-Amz-Signature=49bb3dda3580d8199be59e9df185511d39b39a5b1c555fa7ad7a9148956705fb&X-Amz-SignedHeaders=host)")
