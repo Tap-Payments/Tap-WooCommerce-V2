@@ -23,4 +23,4 @@
 
 **Step 6.** Provide the **Publishable Key** & **Private Key** recevied from Tap, configure the Payment Mode and Ui Mode as per need and save the configuration by clicking on **Save Changes** button.
 
-![Admin Configuration](https://github.com/user-attachments/assets/f31738a0-8811-47f7-8911-213fc50f62cf")
+![Admin Configuration](https://github.com/Tap-Payments/Tap-WooCommerce-V2/issues/2#issue-3191197840")
