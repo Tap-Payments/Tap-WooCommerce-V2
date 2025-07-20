@@ -70,7 +70,7 @@
         s = {
             name: "tap",
             label: Object(r.createElement)("img", {
-                src: logo_src + "/tap-all-in-one/assets/img/logo.png",
+                src: logo_src + "/Tap-WooCommerce-V2/assets/img/logo.png",
                 alt: Object(a.decodeEntities)(l.title || Object(i.__)("Tap", "woocommerce"))
             }),
             placeOrderButtonLabel: Object(i.__)("Proceed to Tap", "woocommerce"),

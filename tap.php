@@ -494,8 +494,13 @@ function tap_init_gateway_class() {
 		echo '<input type="hidden" id="shippingItems" value="' . htmlspecialchars(json_encode($shipping_carrier), ENT_QUOTES, 'UTF-8') . '">';
 
 
- 		if ( $this->ui_mode == 'popup') {?>	
-
+ 		if ( $this->ui_mode == 'popup') {	
+ 			static $already_rendered = false;
+		    if ($already_rendered) {
+		        return;
+		    }
+		    $already_rendered = true;
+		    ?>
             <script type="text/javascript">
              	jQuery(function(){
 					
