@@ -501,6 +501,8 @@ function tap_init_gateway_class() {
 		    }
 		    $already_rendered = true;
 		    ?>
+ 			
+
             <script type="text/javascript">
              	jQuery(function(){
 					
