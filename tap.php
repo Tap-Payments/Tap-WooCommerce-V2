@@ -40,6 +40,7 @@ function tap_init_gateway_class() {
     	public $ui_language;
     	public $post_url;
     	public $save_card;
+    	public $merchant_id;
 
 
  		/**
