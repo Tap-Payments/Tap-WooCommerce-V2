@@ -112,6 +112,11 @@ function tap_init_gateway_class() {
          	$status = $data['status'];
          	$charge_id = $data['id'];
         	$order = wc_get_order($orderid);
+
+        	if($order->get_status() != 'pending'){
+				return;
+			}
+
         	$order_currency = $order->get_currency();
         	$order_amount = $order->get_total();
       		
@@ -201,6 +206,11 @@ function tap_init_gateway_class() {
 	public function tap_thank_you_page($order_id){
 		global $woocommerce;
 		$active_sk = '';	
+		$order = wc_get_order( $order_id );
+		if($order->get_status() != 'pending'){
+			return;
+		}
+
 		if ($this->testmode == '1') {
 	 		$active_sk = $this->test_secret_key;
 		}else {
@@ -229,7 +239,6 @@ function tap_init_gateway_class() {
 		$response = curl_exec($curl);
 		$response = json_decode($response);
 		
- 		$order = wc_get_order( $order_id );
  		$order_amount = $order->get_total();
  		$order_currency = $order->get_currency();
  		if ($response->status !== 'CAPTURED' && $response->status !== 'AUTHORIZED') { 
