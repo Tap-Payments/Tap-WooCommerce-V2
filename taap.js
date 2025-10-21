@@ -234,7 +234,7 @@ jQuery('#submit_tap_payment_form').on('click', function() {
                         "amount": fixed_amount,
                         "currency": currency,
                         "items": items,
-                        "shipping": shipping
+                        ...(shipping && shipping.amount > 0 ? { shipping } : {})
                     }
                 };
         console.log(config);  
