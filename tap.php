@@ -207,6 +207,16 @@ function tap_init_gateway_class() {
 		global $woocommerce;
 		$active_sk = '';	
 		$order = wc_get_order( $order_id );
+		if($order->get_status() == 'cancelled'){
+			$failure_url = get_permalink($this->failer_page_id);
+			
+			 if (!headers_sent() && !empty($failure_url)) {
+				wc_add_notice(__('Transaction Failed', 'woothemes'), 'error');
+				wp_safe_redirect($failure_url);
+				exit;
+        	}
+		}
+		
 		if($order->get_status() != 'pending'){
 			return;
 		}
