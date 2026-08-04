@@ -20,6 +20,106 @@ function tap_add_gateway_class( $gateways ) {
 	return $gateways;
 }
 
+/**
+ * Write a message to the WooCommerce logs (WooCommerce > Status > Logs) under
+ * the "tap" source. Falls back to PHP's error_log() when WooCommerce logging is
+ * unavailable.
+ *
+ * @param string $message The message to log.
+ * @param string $level   One of emergency|alert|critical|error|warning|notice|info|debug.
+ */
+function tap_log( $message, $level = 'error' ) {
+	if ( function_exists( 'wc_get_logger' ) ) {
+		$logger = wc_get_logger();
+		if ( $logger ) {
+			$logger->log( $level, $message, array( 'source' => 'tap' ) );
+			return;
+		}
+	}
+	error_log( 'Tap [' . $level . ']: ' . $message );
+}
+
+/**
+ * Unified Tap API request helper.
+ *
+ * Centralises all cURL boilerplate for calls to the Tap API, wraps the request
+ * in a try/catch and logs any transport/JSON exception. This avoids duplicating
+ * the same cURL setup across the plugin.
+ *
+ * @param string $url        Full endpoint URL.
+ * @param string $secret_key Tap secret key used for the Bearer token.
+ * @param array  $args       Optional overrides:
+ *                           - method  (string) HTTP method, default 'GET'.
+ *                           - body    (array|string|null) request body; arrays are json_encoded.
+ *                           - headers (array) extra headers beyond auth + content-type.
+ *                           - assoc   (bool) decode JSON as associative array, default false.
+ * @return mixed|null Decoded JSON response, or null on failure.
+ */
+function tap_api_request( $url, $secret_key, $args = array() ) {
+	$args = array_merge( array(
+		'method'  => 'GET',
+		'body'    => null,
+		'headers' => array(),
+		'assoc'   => false,
+	), $args );
+
+	$headers = array_merge( array(
+		'authorization: Bearer ' . $secret_key,
+		'content-type: application/json',
+	), (array) $args['headers'] );
+
+	$body = $args['body'];
+	if ( is_array( $body ) ) {
+		$body = json_encode( $body );
+	}
+
+	$curl = null;
+	try {
+		$curl = curl_init();
+		if ( false === $curl ) {
+			throw new Exception( 'curl_init() failed' );
+		}
+
+		$opts = array(
+			CURLOPT_URL            => $url,
+			CURLOPT_RETURNTRANSFER => true,
+			CURLOPT_ENCODING       => '',
+			CURLOPT_MAXREDIRS      => 10,
+			CURLOPT_TIMEOUT        => 30,
+			CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_1_1,
+			CURLOPT_CUSTOMREQUEST  => strtoupper( $args['method'] ),
+			CURLOPT_HTTPHEADER     => $headers,
+		);
+		if ( ! is_null( $body ) ) {
+			$opts[ CURLOPT_POSTFIELDS ] = $body;
+		}
+		curl_setopt_array( $curl, $opts );
+
+		$response  = curl_exec( $curl );
+		$errno     = curl_errno( $curl );
+		$error     = curl_error( $curl );
+		$http_code = curl_getinfo( $curl, CURLINFO_HTTP_CODE );
+
+		if ( $errno ) {
+			throw new Exception( sprintf( 'cURL error (%d): %s', $errno, $error ) );
+		}
+
+		$decoded = json_decode( $response, (bool) $args['assoc'] );
+		if ( JSON_ERROR_NONE !== json_last_error() ) {
+			throw new Exception( 'Invalid JSON response: ' . json_last_error_msg() . ' | HTTP ' . $http_code . ' | Body: ' . substr( (string) $response, 0, 500 ) );
+		}
+
+		return $decoded;
+	} catch ( Exception $e ) {
+		tap_log( 'Tap API request failed [' . strtoupper( $args['method'] ) . ' ' . $url . ']: ' . $e->getMessage() );
+		return null;
+	} finally {
+		if ( $curl instanceof CurlHandle || ( is_resource( $curl ) ) ) {
+			curl_close( $curl );
+		}
+	}
+}
+
 add_action( 'plugins_loaded', 'tap_init_gateway_class' );
 define('tap_imgdir', WP_PLUGIN_URL . "/" . plugin_basename(dirname(__FILE__)) . '/assets/img/');
 
@@ -93,6 +193,7 @@ function tap_init_gateway_class() {
 			add_action( 'woocommerce_receipt_tap', array( $this, 'tap_checkout_receipt_page' ) );
 			add_action( 'woocommerce_thankyou_tap', array( $this, 'tap_thank_you_page' ) );
 			add_action( 'woocommerce_api_tap_webhook', array( $this, 'webhook' ) );
+			add_filter( 'the_content', array( $this, 'tap_maybe_show_failure_notice' ) );
 
 			
 			
@@ -147,52 +248,20 @@ function tap_init_gateway_class() {
                	$refund_object["currency"] = $data['currency'];
                	$refund_object["reason"]           = "Order currency and response currency mismatch(fraudulent)";
                	$refund_object["post_url"] = ""; 
-                $curl = curl_init();
-                     curl_setopt_array($curl, array(
-                        CURLOPT_URL => $refund_url,
-                        	CURLOPT_RETURNTRANSFER => true,
-                        	CURLOPT_ENCODING => "",
-                        	CURLOPT_MAXREDIRS => 10,
-                        	CURLOPT_TIMEOUT => 30,
-                        	CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-                        	CURLOPT_CUSTOMREQUEST => "POST",
-                        	CURLOPT_POSTFIELDS => json_encode($refund_object),
-                        	CURLOPT_HTTPHEADER => array(
-                                        "authorization: Bearer ".$active_sk,
-                                        "content-type: application/json"
-                              ),
-                        )
-                     );
-
-                $refund_response = curl_exec($curl);
-                $refund_response = json_decode($refund_response);
+                $refund_response = tap_api_request( $refund_url, $active_sk, array(
+                    'method' => 'POST',
+                    'body'   => $refund_object,
+                ) );
             	$order->update_status('cancelled');
 	         	$order->add_order_note(sanitize_text_field('Tap payment decllined..').("<br>").('ID').(':'). ($charge_id.("<br>").('Payment Type :') . ($data['source']['payment_method']).("<br>").('Payment Ref:'). ($data['reference']['payment']). ('Refund ID' ) . $refund_response->id));
 	      	}
 
 	      	if ($data['status'] == 'AUTHORIZED') {
 	      		$void_url = "https://api.tap.company/v2/authorize/".$data['id']."/void";
-                $curl = curl_init();
-                curl_setopt_array($curl, array(
-                    CURLOPT_URL => $void_url,
-                        CURLOPT_RETURNTRANSFER => true,
-                        CURLOPT_ENCODING => "",
-                        CURLOPT_MAXREDIRS => 10,
-                        CURLOPT_TIMEOUT => 30,
-                        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-                        CURLOPT_CUSTOMREQUEST => "POST",
-                        CURLOPT_POSTFIELDS => "{}",
-                        CURLOPT_HTTPHEADER => array(
-                                "authorization: Bearer ".$active_sk,
-                                "content-type: application/json"
-                        ),
-                    )
-                );
-
-                $void_response = curl_exec($curl);
-                $void_response = json_decode($void_response);
-                $err = curl_error($curl);
-                curl_close($curl);
+                $void_response = tap_api_request( $void_url, $active_sk, array(
+                    'method' => 'POST',
+                    'body'   => '{}',
+                ) );
 
                	$order->update_status('cancelled');
 	         	$order->add_order_note(sanitize_text_field('Tap payment decllined..').("<br>").('ID').(':'). ($charge_id.("<br>").('Payment Type :') . ($data['source']['payment_method']).("<br>").('Payment Ref:'). ($data['reference']['payment'])));
@@ -203,18 +272,75 @@ function tap_init_gateway_class() {
 	
 
 
+	/**
+	 * Build the URL the customer is sent to when a payment fails/declines.
+	 * A query flag is appended so the failure notice can be rendered on the
+	 * destination page regardless of whether the theme prints WooCommerce notices.
+	 */
+	public function tap_get_failure_url( $message = '' ) {
+		$failure_url = '';
+		if ( ! empty( $this->failer_page_id ) ) {
+			$failure_url = get_permalink( $this->failer_page_id );
+		}
+		if ( empty( $failure_url ) ) {
+			$failure_url = function_exists( 'wc_get_checkout_url' ) ? wc_get_checkout_url() : home_url();
+		}
+		$args = array( 'tap_payment' => 'failed' );
+		if ( ! empty( $message ) ) {
+			// add_query_arg() url-encodes the value.
+			$args['tap_msg'] = $message;
+		}
+		return add_query_arg( $args, $failure_url );
+	}
+
+	/**
+	 * Redirect the customer to the failure page. Works even if output has
+	 * already started (e.g. from within the thank-you page template), where a
+	 * normal header redirect would silently fail. An optional gateway response
+	 * message is carried through so it can be shown on the failure page.
+	 */
+	public function tap_redirect_failure( $message = '' ) {
+		$url = $this->tap_get_failure_url( $message );
+		if ( ! headers_sent() ) {
+			wp_safe_redirect( $url );
+		} else {
+			echo '<meta http-equiv="refresh" content="0;url=' . esc_url( $url ) . '" />';
+			echo '<script>window.location.href = ' . wp_json_encode( $url ) . ';</script>';
+		}
+		exit;
+	}
+
+	/**
+	 * Render the failure notice on the failure page. Prints the gateway response
+	 * message when available, otherwise a generic "Transaction Failed". Uses
+	 * WooCommerce notice markup so it inherits the store's styling.
+	 */
+	public function tap_maybe_show_failure_notice( $content ) {
+		static $already_shown = false;
+		if ( $already_shown || is_admin() || ! in_the_loop() || ! is_main_query() ) {
+			return $content;
+		}
+		if ( isset( $_GET['tap_payment'] ) && 'failed' === sanitize_text_field( wp_unslash( $_GET['tap_payment'] ) ) ) {
+			$already_shown = true;
+			$message = isset( $_GET['tap_msg'] ) ? sanitize_text_field( wp_unslash( $_GET['tap_msg'] ) ) : '';
+			if ( '' === trim( $message ) ) {
+				$message = __( 'Transaction Failed', 'woothemes' );
+			}
+			$notice  = '<div class="woocommerce">';
+			$notice .= '<ul class="woocommerce-error" role="alert"><li>' . esc_html( $message ) . '</li></ul>';
+			$notice .= '</div>';
+			return $notice . $content;
+		}
+		return $content;
+	}
+
 	public function tap_thank_you_page($order_id){
 		global $woocommerce;
 		$active_sk = '';	
+
 		$order = wc_get_order( $order_id );
 		if($order->get_status() == 'cancelled'){
-			$failure_url = get_permalink($this->failer_page_id);
-			
-			 if (!headers_sent() && !empty($failure_url)) {
-				wc_add_notice(__('Transaction Failed', 'woothemes'), 'error');
-				wp_safe_redirect($failure_url);
-				exit;
-        	}
+			$this->tap_redirect_failure( $order->get_meta( '_tap_fail_message' ) );
 		}
 		
 		if($order->get_status() != 'pending'){
@@ -226,34 +352,24 @@ function tap_init_gateway_class() {
 		}else {
 	 		$active_sk = $this->live_secret_key;
 		}
-		if ($this->payment_mode	== 'charge') {
-			$url = 'https://api.tap.company/v2/charges/';
-		}
-		else {
-			$url = 'https://api.tap.company/v2/authorize/';
-		}
-	    $curl = curl_init();
-			curl_setopt_array($curl, array(
-		  	CURLOPT_URL => $url.$_GET['tap_id'],
-						CURLOPT_RETURNTRANSFER => true,
-						CURLOPT_ENCODING => "",
-						CURLOPT_MAXREDIRS => 10,
-						CURLOPT_TIMEOUT => 30,
-						CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-						CURLOPT_CUSTOMREQUEST => "GET",
-						CURLOPT_HTTPHEADER => array(
-						    "authorization: Bearer ".$active_sk,
-						    "content-type: application/json"
-				  	),
-		));
-		$response = curl_exec($curl);
-		$response = json_decode($response);
-		
+		// Determine the transaction type from the Tap id prefix rather than the
+		// configured payment mode: charges start with "chg_" and authorizations
+		// start with "auth_".
+		$tap_id       = isset( $_GET['tap_id'] ) ? sanitize_text_field( wp_unslash( $_GET['tap_id'] ) ) : '';
+		$is_authorize = ( strpos( $tap_id, 'auth_' ) === 0 );
+		$is_charge    = ( strpos( $tap_id, 'chg_' ) === 0 );
+		$url          = $is_authorize
+			? 'https://api.tap.company/v2/authorize/'
+			: 'https://api.tap.company/v2/charges/';
+		$response = tap_api_request( $url . $_GET['tap_id'], $active_sk, array( 'method' => 'GET' ) );
+
+ 		// Gateway response message (e.g. decline reason) to show on failure.
+ 		$fail_message = ( isset( $response->response->message ) && $response->response->message ) ? $response->response->message : '';
  		$order_amount = $order->get_total();
  		$order_currency = $order->get_currency();
  		if ($response->status !== 'CAPTURED' && $response->status !== 'AUTHORIZED') { 
  			$order->update_status('cancelled');
-			$order->add_order_note(sanitize_text_field('Tap payment failed').("<br>").('ID').(':'). ($_GET['tap_id'].("<br>").('Payment Type :') . ($response->source->payment_method).("<br>").('Payment Ref:'). ($response->reference->payment)));
+			$order->add_order_note(sanitize_text_field('Tap payment failed').("<br>").('Reason:').($fail_message).("<br>").('ID').(':'). ($_GET['tap_id'].("<br>").('Payment Type :') . ($response->source->payment_method).("<br>").('Payment Ref:'). ($response->reference->payment)));
 			$items = $order->get_items();
 	 		foreach ( $items as $item ) {
 	    		$product_name = $item->get_name();
@@ -264,11 +380,9 @@ function tap_init_gateway_class() {
 	    		$variationName = implode(" / ", $variation->get_variation_attributes());
 	    		$woocommerce->cart->add_to_cart( $product_id, $product_quantity, $product_variation_id , $variationName);
 			}
-			$failure_url = get_permalink($this->failer_page_id);
-			wp_redirect($failure_url);
-			wc_add_notice( __('Transaction Failed ', 'woothemes') . $error_message, 'error' );
-		    return;
-			exit;
+			$order->update_meta_data( '_tap_fail_message', $fail_message );
+			$order->save();
+			$this->tap_redirect_failure( $fail_message );
  		}
 	 	if (empty($_GET['tap_id'])) {
 	 		$items = $order->get_items();
@@ -282,14 +396,13 @@ function tap_init_gateway_class() {
 	    				$woocommerce->cart->add_to_cart( $product_id, $product_quantity, $product_variation_id , $variationName);
 			}
 
-		 	$cart_url = $woocommerce->cart->get_cart_url();
-		 	update_status('cancelled');
-		 	wp_redirect($cart_url);	
+		 	$order->update_status('cancelled');
+		 	$this->tap_redirect_failure();
 	 	}
 	 	//echo 'order amount--'.$order_amount.'response amount--'.$response->amount.'order currency--'.$order_currency.'--response currency'.$response->currency;exit;
  		if (($order_amount == $response->amount) && ($order_currency == $response->currency)) { 
  				
- 			if (!empty($_GET['tap_id']) && $this->payment_mode == 'charge') {
+ 			if (!empty($_GET['tap_id']) && $is_charge) {
 				if ($response->status == 'CAPTURED') {
 					$order->update_status('processing');
 					$order->payment_complete($_GET['tap_id']);
@@ -307,7 +420,7 @@ function tap_init_gateway_class() {
 				}
  			}
 
- 			if (!empty($_GET['tap_id']) && $this->payment_mode == 'authorize') {
+ 			if (!empty($_GET['tap_id']) && $is_authorize) {
 				if ($response->status == 'AUTHORIZED') {
 						$order->update_status('pending');
 						$order->add_order_note(sanitize_text_field('Tap payment successful').("<br>").('ID').(':'). ($_GET['tap_id'].("<br>").('Payment Type :') . ($response->source->payment_method).("<br>").('Payment Ref:'). ($response->reference->payment)));
@@ -320,16 +433,10 @@ function tap_init_gateway_class() {
 						} 
 				} 
 				else {
-						$order->update_status('pending');
-					 	if ( $this->failer_page_id == "" || $this->failer_page_id == 0 ) {
-							$failure_url =  $this->get_return_url($order);
-						} else {
-							$failure_url = get_permalink($this->failer_page_id);
-							wp_redirect($failure_url);
-							wc_add_notice( __('Transaction Failed ', 'woothemes') . $error_message, 'error' );
-                   	return;
-							exit;
-						}
+						$order->update_status('cancelled');
+						$order->update_meta_data( '_tap_fail_message', $fail_message );
+						$order->save();
+						$this->tap_redirect_failure( $fail_message );
 				}
  			}
 	 	}
@@ -342,72 +449,25 @@ function tap_init_gateway_class() {
 			    $refund_object["reason"]           = "Order currency and response currency mismatch(fraudulent)";
 			    $refund_object["post_url"] = ""; 
 						
-				$curl = curl_init();
-					curl_setopt_array($curl, array(
-				  		CURLOPT_URL => $refund_url,
-				  			CURLOPT_RETURNTRANSFER => true,
-				  			CURLOPT_ENCODING => "",
-				  			CURLOPT_MAXREDIRS => 10,
-				  			CURLOPT_TIMEOUT => 30,
-				  			CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-				  			CURLOPT_CUSTOMREQUEST => "POST",
-				  			CURLOPT_POSTFIELDS => json_encode($refund_object),
-				  			CURLOPT_HTTPHEADER => array(
-				    					"authorization: Bearer ".$active_sk,
-				    					"content-type: application/json"
-				  					),
-								)
-						);
-
-				$refund_response = curl_exec($curl);
-				$refund_response = json_decode($refund_response);
-				$err = curl_error($curl);
-				curl_close($curl);
+				$refund_response = tap_api_request( $refund_url, $active_sk, array(
+					'method' => 'POST',
+					'body'   => $refund_object,
+				) );
 				$order->update_status('cancelled');
 				$order->add_order_note(sanitize_text_field('Tap declined payment error').("<br>").('ID').(':'). ($_GET['tap_id'].("<br>").('Payment Type :') . ($response->source->payment_method).("<br>").('Payment Ref:'). ($response->reference->payment). ('Refund ID').(':') . ($refund_response->id)));
-				if ( $this->failer_page_id == "" || $this->failer_page_id == 0 ) {
-					$failure_url =  $this->get_return_url($order);
-				} else {
-					$failure_url = get_permalink($this->failer_page_id);
-					wp_redirect($failure_url);
-					wc_add_notice( __('Transaction Failed ', 'woothemes') . $error_message, 'error' );
-                   		return;
-                }
+				$this->tap_redirect_failure( __( 'Payment verification failed (amount/currency mismatch).', 'woothemes' ) );
 			}
 
 			else if ($response->status == 'AUTHORIZED')
             {
                 $void_url = "https://api.tap.company/v2/authorize/".$_REQUEST['tap_id']."/void";
-                $curl = curl_init();
-                curl_setopt_array($curl, array(
-                   	CURLOPT_URL => $void_url,
-                   	CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_ENCODING => "",
-                    CURLOPT_MAXREDIRS => 10,
-                    CURLOPT_TIMEOUT => 30,
-                    CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-                    CURLOPT_CUSTOMREQUEST => "POST",
-                    CURLOPT_POSTFIELDS => "{}",
-                    CURLOPT_HTTPHEADER => array(
-                        "authorization: Bearer ".$active_sk,
-                        "content-type: application/json"
-                    ),
-                ));
-
-                $void_response = curl_exec($curl);
-                $void_response = json_decode($void_response);
-                $err = curl_error($curl);
-                curl_close($curl);
+                $void_response = tap_api_request( $void_url, $active_sk, array(
+                    'method' => 'POST',
+                    'body'   => '{}',
+                ) );
                 $order->update_status('cancelled');
                 $order->add_order_note(sanitize_text_field('Tap declined payment error').("<br>").('ID').(':'). ($_GET['tap_id'].("<br>").('Payment Type :') . ($response->source->payment_method).("<br>").('Payment Ref:'). ($response->reference->payment)));
-               	if ( $this->failer_page_id == "" || $this->failer_page_id == 0 ) {
-								$failure_url =  $this->get_return_url($order);
-				} else {
-					$failure_url = get_permalink($this->failer_page_id);
-					wp_redirect($failure_url);
-					wc_add_notice( __('Transaction Failed ', 'woothemes') . $error_message, 'error' );
-                   	return;
-                }
+                $this->tap_redirect_failure( __( 'Payment verification failed (amount/currency mismatch).', 'woothemes' ) );
             }
 	 	}
 	}
@@ -415,9 +475,11 @@ function tap_init_gateway_class() {
 
  	public function tap_checkout_receipt_page($order_id) {
  		global $woocommerce;
- 		$items = WC()->cart->get_cart();
- 		$items = array_values(($items));
  		$order = wc_get_order( $order_id );
+ 		// Build items from the order being paid, not the live cart. On the
+ 		// order-pay endpoint the cart may be empty or hold different products,
+ 		// which would send Tap the wrong items (the SDK validates them client-side).
+ 		$items = $order->get_items();
  		if($this->testmode == "testmode"){
             $active_pk = $this->test_public_key;
             $active_sk = $this->test_secret_key;
@@ -448,12 +510,24 @@ function tap_init_gateway_class() {
          	$last_name = $order->billing_last_name;
         }
  		echo '<div id="tap_root"></div>';
+ 		echo '<div id="tap_loading_overlay">
+ 				<div class="tap-spinner"></div>
+ 				<div class="tap-loading-text">' . esc_html__( 'Loading…', 'woothemes' ) . '</div>
+ 			  </div>';
+ 		echo '<style>
+ 			#tap_loading_overlay{position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);}
+ 			#tap_loading_overlay .tap-spinner{width:48px;height:48px;border:5px solid #e0e0e0;border-top-color:#2d8cff;border-radius:50%;animation:tap-spin 1s linear infinite;}
+ 			#tap_loading_overlay .tap-loading-text{margin-top:16px;font-size:16px;color:#333;font-family:inherit;}
+ 			@keyframes tap-spin{to{transform:rotate(360deg);}}
+ 			</style>';
  			echo '<input type="hidden" id="publishable_key" value="' . $this->live_public_key . '" />';
         echo '<input type="hidden" id="test_public_key" value="' . $this->test_public_key . '" />';
         echo '<input type="hidden" id="testmode" value="' . $this->testmode . '" />';
         echo '<input type="hidden" id="post_url" value="' . get_site_url()."/wc-api/tap_webhook" . '" />';
  		echo '<input type="hidden" id="tap_end_url" value="' . $this->get_return_url($order) . '" />';
  		echo '<input type="hidden" id="order_id" value="' . $order->id . '" />';
+ 		echo '<input type="hidden" id="tap_ajax_url" value="' . admin_url('admin-ajax.php') . '" />';
+ 		echo '<input type="hidden" id="tap_ajax_nonce" value="' . wp_create_nonce('tap_save_charge_id') . '" />';
  		echo '<input type="hidden" id="hashstring" value="' . $hashstring . '" />';
  		echo '<input type="hidden" id="ui_language" value="' . $this->ui_language . '" />';
  		echo '<input type="hidden" id="countrycode" value="' . $country_code . '" />';
@@ -486,28 +560,33 @@ function tap_init_gateway_class() {
 
 		
  		$order_it = [];
+ 		$decimals = in_array($order->get_currency(), array('KWD','BHD','OMR','JOD'), true) ? 3 : 2;
  			
- 		foreach($items as $key=>$item) {
- 			$price = $item['data']->price;
- 			if ($item['data']->sale_price){
- 				$price = $item['data']->sale_price;
+ 		foreach($items as $item_id=>$item) {
+ 			$product  = $item->get_product();
+ 			$quantity = intval($item->get_quantity());
+ 			if ($quantity < 1) {
+ 				$quantity = 1;
  			}
- 			
- 			$description = $item['data']->description;
+ 			// Unit price as actually charged on this order line.
+ 			$price = round(((float) $item->get_total()) / $quantity, $decimals);
+
+ 			$name       = $item->get_name();
+ 			$product_id = $item->get_product_id();
+ 			$description = $product ? $product->get_description() : '';
  			if (strlen($description) > 240) {
 			    // Truncate to 240 characters and append '...'
 			    $description = substr($description, 0, 240) . '...';
 			}
 
  			$order_it[] = [
-			    'name' => $item['data']->name,
+			    'name' => $name,
 			    'description' => $description,
-			    'quantity' => intval($item['quantity']),
+			    'quantity' => $quantity,
 			    'currency' => $order->currency,
 			    'amount' => $price
 			];
- 			//echo '<pre>';var_dump($order_it);
- 			echo '<input type="hidden" name="items_bulk[]" data-name="'.$item['data']->name.'" data-quantity="'.$item['quantity'].'" data-sale-price="'.$price.'" data-item-product-id="'.$item['product_id'].'" data-product-total-amount="'.$item['quantity']*$price.'" class="items_bulk">';
+ 			echo '<input type="hidden" name="items_bulk[]" data-name="'.esc_attr($name).'" data-quantity="'.esc_attr($quantity).'" data-sale-price="'.esc_attr($price).'" data-item-product-id="'.esc_attr($product_id).'" data-product-total-amount="'.esc_attr($quantity*$price).'" class="items_bulk">';
  		}
 
  		echo '<input type="hidden" id="itm" value="' . htmlspecialchars(json_encode($order_it), ENT_QUOTES, 'UTF-8') . '">';
@@ -655,9 +734,14 @@ function tap_init_gateway_class() {
       		if (is_checkout()) {
 				if ($this->ui_mode == 'popup' || $this->ui_mode == 'redirect' ){
 			
-					wp_enqueue_script( 'tap_js', 'https://tap-sdks.b-cdn.net/checkout/1.5.0-beta/index.js', array('jquery') );
-					wp_register_script( 'woocommerce_tap', plugins_url( 'taap.js', __FILE__ ), 'gosell');
+					wp_enqueue_script( 'tap_js', 'https://tap-sdks.b-cdn.net/checkout/1.5.0-beta/indexk.js', array('jquery') );
+					$taap_version = @filemtime( plugin_dir_path( __FILE__ ) . 'tap.js' );
+					wp_register_script( 'woocommerce_tap', plugins_url( 'tap.js', __FILE__ ), array('jquery'), $taap_version );
 					wp_enqueue_style( 'tap-payment', plugins_url( 'tap-payment.css', __FILE__ ) );
+					wp_localize_script( 'woocommerce_tap', 'tap_ajax_object', array(
+						'ajax_url' => admin_url( 'admin-ajax.php' ),
+						'nonce'    => wp_create_nonce( 'tap_save_charge_id' ),
+					) );
 					wp_enqueue_script( 'woocommerce_tap' );
 				}
 			}
@@ -1027,28 +1111,13 @@ function tap_init_gateway_class() {
 	 				$active_sk = $this->live_secret_key;
 	 			}
 
-				$curl = curl_init();
-				curl_setopt_array($curl, array(
-				  	CURLOPT_URL => $charge_url,
-			  		CURLOPT_RETURNTRANSFER => true,
-			  		CURLOPT_ENCODING => "",
-			  		CURLOPT_MAXREDIRS => 10,
-			  		CURLOPT_TIMEOUT => 30,
-			  		CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-			  		CURLOPT_CUSTOMREQUEST => "POST",
-			  		CURLOPT_POSTFIELDS => $frequest,
-			  		CURLOPT_HTTPHEADER => array(
-			            "authorization: Bearer ".$active_sk,
-			            "content-type: application/json",
-			            "lang_code: " . $language
-			        ),
-				));
-
-				$response = curl_exec($curl);
-				$err = curl_error($curl);
-				$obj = json_decode($response);
-				$charge_id   = $obj->id;
-				$redirct_Url = $obj->transaction->url;
+				$obj = tap_api_request( $charge_url, $active_sk, array(
+					'method'  => 'POST',
+					'body'    => $frequest,
+					'headers' => array( 'lang_code: ' . $language ),
+				) );
+				$charge_id   = isset( $obj->id ) ? $obj->id : '';
+				$redirct_Url = isset( $obj->transaction->url ) ? $obj->transaction->url : '';
 			    
 			    return array(
 					'result'   => 'success',
@@ -1105,25 +1174,10 @@ function tap_init_gateway_class() {
 	 			$active_sk = $this->live_secret_key;
 			}
 
-			$curl = curl_init();
-
-			curl_setopt_array($curl, array(
-			  CURLOPT_URL => "https://api.tap.company/v2/refunds",
-			  CURLOPT_RETURNTRANSFER => true,
-			  CURLOPT_ENCODING => "",
-			  CURLOPT_MAXREDIRS => 10,
-			  CURLOPT_TIMEOUT => 30,
-			  CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-			  CURLOPT_CUSTOMREQUEST => "POST",
-			  CURLOPT_POSTFIELDS =>$json_request,
-			  CURLOPT_HTTPHEADER => array(
-		    		"authorization: Bearer ".$active_sk,
-		    		"content-type: application/json"
-			  	),
-			));
-
-			$response = curl_exec($curl);;
-	 		$response = json_decode($response);
+			$response = tap_api_request( 'https://api.tap.company/v2/refunds', $active_sk, array(
+				'method' => 'POST',
+				'body'   => $json_request,
+			) );
 	 		if ($response->id) {
 	 			if ( $response->status == 'PENDING') {
 	 				$order->add_order_note(sanitize_text_field('Tap Refund successful').("<br>").'Refund ID'.("<br>"). $response->id);
@@ -1135,6 +1189,171 @@ function tap_init_gateway_class() {
 	 		}
 		}
    	}
+}
+
+
+/*
+ * AJAX: save the Tap charge id onto the order as an order note.
+ * Registered at plugin load (not inside the gateway constructor) so it is
+ * available during admin-ajax.php requests, where the gateway is not built.
+ */
+add_action( 'wp_ajax_tap_save_charge_id', 'tap_ajax_save_charge_id' );
+add_action( 'wp_ajax_nopriv_tap_save_charge_id', 'tap_ajax_save_charge_id' );
+
+function tap_ajax_save_charge_id() {
+	if ( ! check_ajax_referer( 'tap_save_charge_id', 'nonce', false ) ) {
+		wp_send_json_error( 'bad_nonce' );
+	}
+
+	$order_id  = isset( $_POST['order_id'] ) ? absint( $_POST['order_id'] ) : 0;
+	$charge_id = isset( $_POST['charge_id'] ) ? sanitize_text_field( wp_unslash( $_POST['charge_id'] ) ) : '';
+
+	if ( ! $order_id || empty( $charge_id ) ) {
+		wp_send_json_error( 'missing_params' );
+	}
+
+	$order = wc_get_order( $order_id );
+	if ( ! $order ) {
+		wp_send_json_error( 'invalid_order' );
+	}
+
+	if ( $order->get_meta( '_tap_charge_id' ) !== $charge_id ) {
+		$order->update_meta_data( '_tap_charge_id', $charge_id );
+		$order->set_transaction_id( $charge_id );
+		$order->add_order_note( sanitize_text_field( 'Tap charge initiated. Charge ID: ' . $charge_id ) );
+		$order->save();
+	}
+
+	wp_send_json_success( array( 'charge_id' => $charge_id ) );
+}
+
+
+/*
+ * Handles a transition to the "cancelled" status for Tap orders. It does two
+ * things on the shared hook:
+ *   1. Audit log: record who cancelled the order (or attempted it) and from
+ *      where, as an order note and order meta.
+ *   2. Safety net: re-check the stored charge id against the Tap API. If the
+ *      charge was actually captured, move the order to "processing" instead of
+ *      leaving it cancelled.
+ */
+add_action( 'woocommerce_order_status_cancelled', 'tap_handle_order_cancelled', 5, 2 );
+
+function tap_handle_order_cancelled( $order_id, $order = null ) {
+	if ( ! ( $order instanceof WC_Order ) ) {
+		$order = wc_get_order( $order_id );
+	}
+	if ( ! $order ) {
+		return;
+	}
+
+	tap_log_order_cancellation( $order );
+	tap_recheck_charge_on_cancel( $order );
+}
+
+/*
+ * Audit log: record who cancelled the order (or attempted the cancellation)
+ * and from where, storing the details as an order note and order meta.
+ */
+function tap_log_order_cancellation( $order ) {
+	// Who triggered it.
+	$user = wp_get_current_user();
+	if ( $user && $user->ID ) {
+		$roles = implode( ', ', (array) $user->roles );
+		$who   = sprintf( '%s (#%d%s)', $user->display_name, $user->ID, $roles ? ', ' . $roles : '' );
+	} else {
+		$who = 'Guest / system (not logged in)';
+	}
+
+	// From where (request context).
+	if ( doing_action( 'woocommerce_cancel_unpaid_orders' ) ) {
+		$context = 'automatic (unpaid hold-stock time limit reached)';
+	} elseif ( defined( 'DOING_CRON' ) && DOING_CRON ) {
+		$context = 'scheduled task (cron)';
+	} elseif ( function_exists( 'wp_doing_ajax' ) && wp_doing_ajax() ) {
+		$context = 'AJAX request';
+	} elseif ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+		$context = 'REST API';
+	} elseif ( defined( 'WP_CLI' ) && WP_CLI ) {
+		$context = 'WP-CLI';
+	} elseif ( is_admin() ) {
+		$context = 'admin dashboard';
+	} else {
+		$context = 'frontend';
+	}
+
+	// IP address.
+	$ip = '';
+	if ( class_exists( 'WC_Geolocation' ) ) {
+		$ip = WC_Geolocation::get_ip_address();
+	}
+	if ( empty( $ip ) && isset( $_SERVER['REMOTE_ADDR'] ) ) {
+		$ip = sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) );
+	}
+
+	$uri = isset( $_SERVER['REQUEST_URI'] ) ? esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
+
+	$note = 'Order cancelled by: ' . $who . ' | Source: ' . $context;
+	if ( $ip ) {
+		$note .= ' | IP: ' . $ip;
+	}
+	if ( $uri ) {
+		$note .= ' | URL: ' . $uri;
+	}
+
+	$order->add_order_note( $note );
+	$order->update_meta_data( '_tap_cancelled_by', $who );
+	$order->update_meta_data( '_tap_cancelled_context', $context );
+	$order->update_meta_data( '_tap_cancelled_ip', $ip );
+	$order->update_meta_data( '_tap_cancelled_time', current_time( 'mysql' ) );
+	$order->save();
+}
+
+
+/*
+ * Safety net: when a Tap order is cancelled, re-check the stored charge id
+ * against the Tap API. If the charge was actually captured, move the order to
+ * "processing" instead of leaving it cancelled.
+ */
+function tap_recheck_charge_on_cancel( $order ) {
+	if ( $order->get_payment_method() !== 'tap' ) {
+		return;
+	}
+
+	$charge_id = $order->get_meta( '_tap_charge_id' );
+	if ( empty( $charge_id ) ) {
+		$charge_id = $order->get_transaction_id();
+	}
+	if ( empty( $charge_id ) ) {
+		return;
+	}
+
+	// Prevent re-processing the same charge more than once.
+	if ( $order->get_meta( '_tap_cancel_rechecked' ) === $charge_id ) {
+		return;
+	}
+
+	if ( ! class_exists( 'WC_Tap_Gateway' ) ) {
+		return;
+	}
+	$gateway   = new WC_Tap_Gateway();
+	$active_sk = $gateway->testmode ? $gateway->test_secret_key : $gateway->live_secret_key;
+	$url       = ( $gateway->payment_mode == 'charge' )
+		? 'https://api.tap.company/v2/charges/'
+		: 'https://api.tap.company/v2/authorize/';
+
+	$response = tap_api_request( $url . $charge_id, $active_sk, array( 'method' => 'GET' ) );
+
+	// Mark as rechecked regardless, so we don't hit the API repeatedly.
+	$order->update_meta_data( '_tap_cancel_rechecked', $charge_id );
+	$order->save();
+
+	if ( isset( $response->status ) && $response->status == 'CAPTURED' ) {
+		$note = ("<br>") . ('ID') . (':') . ( $charge_id . ("<br>") . ('Payment Type :') . ( isset( $response->source->payment_method ) ? $response->source->payment_method : '' ) . ("<br>") . ('Payment Ref:') . ( isset( $response->reference->payment ) ? $response->reference->payment : '' ) );
+		$order->add_order_note( 'Tap payment successful (verified on cancellation).' . $note );
+		$order->payment_complete( $charge_id );
+		$order->update_status( 'processing', sanitize_text_field( 'Tap payment successful' ) . $note );
+	}
 }
 
 
