@@ -734,7 +734,7 @@ function tap_init_gateway_class() {
       		if (is_checkout()) {
 				if ($this->ui_mode == 'popup' || $this->ui_mode == 'redirect' ){
 			
-					wp_enqueue_script( 'tap_js', 'https://tap-sdks.b-cdn.net/checkout/1.5.0-beta/indexk.js', array('jquery') );
+					wp_enqueue_script( 'tap_js', 'https://tap-sdks.b-cdn.net/checkout/1.5.0-beta/index.js', array('jquery') );
 					$taap_version = @filemtime( plugin_dir_path( __FILE__ ) . 'tap.js' );
 					wp_register_script( 'woocommerce_tap', plugins_url( 'tap.js', __FILE__ ), array('jquery'), $taap_version );
 					wp_enqueue_style( 'tap-payment', plugins_url( 'tap-payment.css', __FILE__ ) );

@@ -176,7 +176,7 @@ jQuery('#submit_tap_payment_form').on('click', function() {
                     onLoaded();
                     return;
                 }
-                if (Date.now() - start >= 20000) {
+                if (Date.now() - start >= 60000) {
                     onTimeout();
                     return;
                 }
