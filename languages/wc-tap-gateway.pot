@@ -1,0 +1,564 @@
+# Copyright (C) Tap Payments
+# This file is distributed under the GPL-2.0-or-later license.
+msgid ""
+msgstr ""
+"Project-Id-Version: WooCommerce Tap Payment Gateway 3.0.4\n"
+"Report-Msgid-Bugs-To: https://github.com/Tap-Payments/Tap-WooCommerce-V2/issues\n"
+"POT-Creation-Date: 2026-08-06 05:31+0000\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);\n"
+"X-Domain: wc-tap-gateway\n"
+
+#. translators: 1: site name, 2: order number.
+#: includes/api/class-tap-request-builder.php:47
+msgid "%1$s order %2$s"
+msgstr ""
+
+#: includes/class-wc-tap-gateway.php:45
+msgid "Accept card and wallet payments through Tap."
+msgstr ""
+
+#: includes/class-tap-settings.php:147
+msgid "Allow customers to save their card for future purchases"
+msgstr ""
+
+#: includes/class-tap-settings.php:149
+msgid "Applies to both the redirect and popup checkout."
+msgstr ""
+
+#: includes/class-tap-settings.php:131
+msgid "Arabic"
+msgstr ""
+
+#: includes/class-tap-settings.php:108
+msgid "Authorize"
+msgstr ""
+
+#: includes/class-tap-settings.php:107
+msgid "Charge"
+msgstr ""
+
+#: includes/class-tap-settings.php:103
+msgid "Charge captures funds immediately. Authorize places a hold that you capture later; authorized orders are placed on hold."
+msgstr ""
+
+#: includes/class-tap-settings.php:124
+msgid "Checkout language"
+msgstr ""
+
+#: includes/class-tap-settings.php:112
+msgid "Checkout mode"
+msgstr ""
+
+#: includes/class-tap-return-handler.php:377
+msgid "Continue"
+msgstr ""
+
+#: includes/api/class-tap-api-client.php:168
+msgid "Could not build the payment request."
+msgstr ""
+
+#: includes/class-tap-settings.php:45
+msgid "Credit Card"
+msgstr ""
+
+#: includes/class-tap-return-handler.php:144
+msgid "Customer returned from Tap with a malformed transaction id."
+msgstr ""
+
+#: includes/class-tap-return-handler.php:130
+msgid "Customer returned from Tap without a transaction id."
+msgstr ""
+
+#: includes/class-tap-settings.php:142
+msgid "Dark"
+msgstr ""
+
+#: includes/class-tap-settings.php:172
+msgid "Debug log"
+msgstr ""
+
+#: includes/class-tap-settings.php:49
+msgid "Description"
+msgstr ""
+
+#: includes/class-tap-settings.php:37
+msgid "Enable Tap Gateway"
+msgstr ""
+
+#: includes/class-tap-settings.php:56
+msgid "Enable test mode"
+msgstr ""
+
+#: includes/class-tap-settings.php:36
+msgid "Enable/Disable"
+msgstr ""
+
+#: includes/class-tap-settings.php:130
+msgid "English"
+msgstr ""
+
+#: includes/class-tap-settings.php:164
+msgid "Failure page"
+msgstr ""
+
+#: includes/class-tap-cancellation-handler.php:82
+msgid "Guest or system (not logged in)"
+msgstr ""
+
+#: includes/class-tap-receipt-renderer.php:118
+msgid "JavaScript is required to complete this payment. Please enable it and reload the page."
+msgstr ""
+
+#: includes/class-tap-settings.php:141
+msgid "Light"
+msgstr ""
+
+#: includes/class-tap-settings.php:79
+msgid "Live publishable key"
+msgstr ""
+
+#: includes/class-tap-settings.php:86
+msgid "Live secret key"
+msgstr ""
+
+#: includes/class-tap-receipt-renderer.php:114
+#: includes/class-tap-receipt-renderer.php:187
+msgid "Loading secure checkout…"
+msgstr ""
+
+#: includes/class-tap-settings.php:173
+msgid "Log gateway activity"
+msgstr ""
+
+#: includes/api/class-tap-api-client.php:120
+msgid "Malformed authorization id."
+msgstr ""
+
+#: includes/api/class-tap-api-client.php:78
+msgid "Malformed transaction id."
+msgstr ""
+
+#: includes/class-tap-settings.php:93
+msgid "Merchant ID"
+msgstr ""
+
+#: includes/class-wc-tap-gateway.php:506
+msgid "No Tap transaction is recorded against this order, so it cannot be refunded automatically."
+msgstr ""
+
+#: includes/class-tap-order-processor.php:626
+msgid "Order amount and payment amount do not match."
+msgstr ""
+
+#. translators: 1: who triggered the cancellation, 2: request context.
+#: includes/class-tap-cancellation-handler.php:89
+msgid "Order cancelled by %1$s via %2$s."
+msgstr ""
+
+#: includes/class-wc-tap-gateway.php:491
+msgid "Order not found."
+msgstr ""
+
+#: includes/class-tap-receipt-renderer.php:122
+msgid "Pay now"
+msgstr ""
+
+#: includes/class-tap-settings.php:52
+msgid "Pay securely with your card via Tap."
+msgstr ""
+
+#: includes/class-tap-order-processor.php:686
+msgid "Payment method"
+msgstr ""
+
+#: includes/class-tap-settings.php:100
+msgid "Payment mode"
+msgstr ""
+
+#: includes/class-tap-receipt-renderer.php:188
+msgid "Payment received. Completing your order…"
+msgstr ""
+
+#: includes/class-tap-order-processor.php:687
+msgid "Payment reference"
+msgstr ""
+
+#: includes/class-tap-settings.php:120
+msgid "Popup"
+msgstr ""
+
+#: includes/class-tap-settings.php:135
+msgid "Popup theme"
+msgstr ""
+
+#: assets/js/blocks/tap-blocks.js:70
+msgid "Proceed to Tap"
+msgstr ""
+
+#: includes/class-tap-settings.php:119
+msgid "Redirect"
+msgstr ""
+
+#: includes/class-tap-settings.php:115
+msgid "Redirect sends the customer to a Tap-hosted page. Popup opens the Tap checkout over your store."
+msgstr ""
+
+#. translators: %s: order number.
+#: includes/api/class-tap-request-builder.php:109
+msgid "Refund for order %s"
+msgstr ""
+
+#: includes/api/class-tap-request-builder.php:112
+msgid "Refund requested from WooCommerce."
+msgstr ""
+
+#: includes/class-tap-settings.php:146
+msgid "Save cards"
+msgstr ""
+
+#: includes/class-tap-privacy.php:117
+msgid "See the Tap Payments privacy policy for details of how they handle that data."
+msgstr ""
+
+#: includes/class-tap-settings.php:199
+msgid "Select a page…"
+msgstr ""
+
+#: includes/class-tap-plugin.php:128
+msgid "Settings"
+msgstr ""
+
+#: includes/api/class-tap-request-builder.php:202
+msgid "Shipping"
+msgstr ""
+
+#: includes/class-tap-order-processor.php:215
+msgid "Something went wrong while confirming your payment. If you were charged, your order will update shortly."
+msgstr ""
+
+#: includes/class-tap-exceptions.php:76
+msgid "Something went wrong while processing your payment. Please try again."
+msgstr ""
+
+#: includes/class-tap-order-processor.php:688
+msgid "Status"
+msgstr ""
+
+#: includes/class-tap-settings.php:154
+msgid "Success page"
+msgstr ""
+
+#: includes/class-wc-tap-gateway.php:298
+msgid "TEST MODE IS ENABLED. Use the test card numbers from the Tap documentation."
+msgstr ""
+
+#: assets/js/blocks/tap-blocks.js:21
+msgid "Tap"
+msgstr ""
+
+#: includes/class-wc-tap-gateway.php:44
+msgid "Tap Gateway"
+msgstr ""
+
+#: tap.php:142
+msgid "Tap Payment Gateway could not start."
+msgstr ""
+
+#. translators: %s: minimum supported WooCommerce version.
+#: tap.php:172
+msgid "Tap Payment Gateway requires WooCommerce %s or newer."
+msgstr ""
+
+#: tap.php:156
+msgid "Tap Payment Gateway requires WooCommerce to be installed and active."
+msgstr ""
+
+#. translators: %s: Tap transaction id.
+#: includes/class-tap-order-processor.php:339
+msgid "Tap captured payment %s but this order could not be completed. The money HAS been taken. Complete the order manually."
+msgstr ""
+
+#. translators: %s: error reported by the Tap checkout script.
+#: includes/class-tap-ajax.php:97
+msgid "Tap checkout could not start: %s"
+msgstr ""
+
+#. translators: %s: current order status.
+#: includes/class-tap-order-processor.php:310
+msgid "Tap confirmed this payment, but the order was already in the \"%s\" status, so WooCommerce skipped the payment-complete step. Verify the order before dispatching."
+msgstr ""
+
+#. translators: %s: error message.
+#: includes/class-tap-order-processor.php:220
+msgid "Tap could not finish processing this payment automatically: %s. Check the transaction in your Tap dashboard before dispatching."
+msgstr ""
+
+#. translators: %s: error message from Tap.
+#: includes/class-wc-tap-gateway.php:425
+msgid "Tap could not start the payment: %s"
+msgstr ""
+
+#: includes/class-tap-order-processor.php:524
+msgid "Tap payment authorized, awaiting capture."
+msgstr ""
+
+#: includes/class-tap-order-processor.php:363
+msgid "Tap payment captured."
+msgstr ""
+
+#. translators: %s: decline reason returned by Tap.
+#: includes/class-tap-order-processor.php:576
+msgid "Tap payment failed: %s"
+msgstr ""
+
+#. translators: 1: order total, 2: amount taken by Tap, 3: outcome of the reversal attempt.
+#: includes/class-tap-order-processor.php:660
+msgid "Tap payment rejected: order total %1$s does not match the payment of %2$s — %3$s."
+msgstr ""
+
+#. translators: %s: Tap transaction id.
+#: includes/class-tap-ajax.php:122
+msgid "Tap payment started. Transaction ID: %s"
+msgstr ""
+
+#. translators: 1: refund amount, 2: Tap refund id, 3: refund status.
+#: includes/class-wc-tap-gateway.php:555
+msgid "Tap refund of %1$s accepted. Refund ID: %2$s (status: %3$s)"
+msgstr ""
+
+#: includes/class-tap-privacy.php:53
+msgid "Tap: "
+msgstr ""
+
+#: includes/class-tap-settings.php:55
+msgid "Test mode"
+msgstr ""
+
+#: includes/class-tap-settings.php:63
+msgid "Test publishable key"
+msgstr ""
+
+#: includes/class-tap-settings.php:72
+msgid "Test secret key"
+msgstr ""
+
+#: includes/class-tap-return-handler.php:117
+msgid "Thanks — your payment is being confirmed. This page will update once your bank confirms it."
+msgstr ""
+
+#: includes/api/class-tap-api-client.php:138
+#: includes/class-wc-tap-gateway.php:520
+msgid "The Tap gateway is not configured with an API key."
+msgstr ""
+
+#: includes/class-tap-settings.php:51
+msgid "The description shown to customers under the payment method name."
+msgstr ""
+
+#: includes/class-tap-receipt-renderer.php:189
+msgid "The payment could not be started. Redirecting…"
+msgstr ""
+
+#: includes/class-tap-return-handler.php:143
+msgid "The payment could not be verified."
+msgstr ""
+
+#: includes/class-tap-settings.php:44
+msgid "The payment method name shown to customers during checkout."
+msgstr ""
+
+#: includes/api/class-tap-response.php:116
+msgid "The payment provider could not be reached."
+msgstr ""
+
+#: includes/api/class-tap-response.php:89
+msgid "The payment provider returned HTTP %d."
+msgstr ""
+
+#. translators: 1: HTTP status code, 2: JSON error description.
+#: includes/api/class-tap-response.php:134
+msgid "The payment provider returned an unreadable response (HTTP %1$d): %2$s"
+msgstr ""
+
+#: includes/class-tap-return-handler.php:129
+#: includes/class-tap-order-processor.php:560
+msgid "The payment was not completed."
+msgstr ""
+
+#: includes/class-wc-tap-gateway.php:526
+msgid "The refund amount must be greater than zero."
+msgstr ""
+
+#: includes/class-wc-tap-gateway.php:474
+msgid "The refund could not be completed because of an unexpected error. Check the Tap log for details."
+msgstr ""
+
+#. translators: 1: settings field label, 2: expected key prefix.
+#: includes/class-wc-tap-gateway.php:213
+msgid "The value saved in \"%1$s\" does not start with %2$s. Please double-check the key."
+msgstr ""
+
+#. translators: %s: the status the order held before the payment was confirmed.
+#: includes/class-tap-order-processor.php:402
+msgid "This order was in the \"%s\" status when Tap confirmed the payment, so it has been restored. Check stock and fulfilment before dispatching."
+msgstr ""
+
+#: includes/class-wc-tap-gateway.php:513
+msgid "This payment is authorized but not captured. Void or capture it in your Tap dashboard instead."
+msgstr ""
+
+#: includes/class-tap-receipt-renderer.php:81
+#: includes/class-tap-exceptions.php:95
+msgid "This payment method is not available right now. Please choose another one."
+msgstr ""
+
+#: includes/class-wc-tap-gateway.php:345
+msgid "This payment method is not configured correctly. Please choose another one."
+msgstr ""
+
+#: includes/class-tap-settings.php:42
+msgid "Title"
+msgstr ""
+
+#: includes/class-tap-order-processor.php:685
+msgid "Transaction ID"
+msgstr ""
+
+#: includes/class-tap-settings.php:58
+msgid "Use your Tap test API keys instead of your live keys."
+msgstr ""
+
+#: includes/class-tap-cancellation-handler.php:140
+msgid "WP-CLI"
+msgstr ""
+
+#: includes/class-tap-return-handler.php:49
+#: includes/class-tap-return-handler.php:163
+msgid "We could not confirm your payment yet. If you were charged, your order will update shortly."
+msgstr ""
+
+#: includes/class-wc-tap-gateway.php:325
+msgid "We could not find your order. Please try again."
+msgstr ""
+
+#: includes/class-tap-receipt-renderer.php:55
+msgid "We could not load the payment form. Please refresh the page or choose another payment method."
+msgstr ""
+
+#: includes/class-wc-tap-gateway.php:354
+#: includes/class-wc-tap-gateway.php:431
+msgid "We could not start your payment. Please try again or choose another payment method."
+msgstr ""
+
+#: includes/class-tap-order-processor.php:652
+msgid "We could not verify the payment amount for your order."
+msgstr ""
+
+#: includes/class-tap-order-processor.php:166
+#: includes/class-tap-order-processor.php:178
+msgid "We could not verify this payment against your order."
+msgstr ""
+
+#: includes/class-tap-exceptions.php:114
+msgid "We could not verify this payment. Please try again."
+msgstr ""
+
+#: includes/class-tap-privacy.php:116
+msgid "When a customer pays with Tap, their name, email address, phone number, billing country, order total, and order line items are sent to Tap Payments in order to process the payment. Tap returns a transaction identifier, which is stored on the order."
+msgstr ""
+
+#: includes/class-tap-settings.php:167
+msgid "Where to send customers after a failed payment. Leave unset to return them to the checkout."
+msgstr ""
+
+#: includes/class-tap-settings.php:157
+msgid "Where to send customers after a successful payment. Leave unset to use the standard WooCommerce order-received page."
+msgstr ""
+
+#: includes/class-tap-privacy.php:119
+msgid "WooCommerce Tap Payment Gateway"
+msgstr ""
+
+#. translators: %s: path to the WooCommerce log viewer.
+#: includes/class-tap-settings.php:177
+msgid "Writes detailed diagnostics to %s. API keys and card numbers are redacted. Errors are always logged regardless of this setting."
+msgstr ""
+
+#: includes/class-tap-settings.php:81
+msgid "Your Tap live key beginning pk_live_."
+msgstr ""
+
+#: includes/class-tap-settings.php:88
+msgid "Your Tap live key beginning sk_live_."
+msgstr ""
+
+#: includes/class-tap-settings.php:95
+msgid "Your Tap merchant identifier."
+msgstr ""
+
+#: includes/class-tap-settings.php:65
+msgid "Your Tap test key beginning pk_test_."
+msgstr ""
+
+#: includes/class-tap-settings.php:74
+msgid "Your Tap test key beginning sk_test_."
+msgstr ""
+
+#: includes/class-tap-return-handler.php:438
+msgid "Your payment could not be completed. Please try again."
+msgstr ""
+
+#: includes/class-tap-cancellation-handler.php:131
+msgid "a scheduled task"
+msgstr ""
+
+#: includes/class-tap-cancellation-handler.php:134
+msgid "an AJAX request"
+msgstr ""
+
+#: includes/class-tap-order-processor.php:644
+msgid "authorization voided"
+msgstr ""
+
+#: includes/class-tap-order-processor.php:618
+msgid "no reversal attempted"
+msgstr ""
+
+#. translators: %s: error message from Tap.
+#: includes/class-tap-order-processor.php:638
+msgid "refund FAILED (%s) — reverse this payment manually"
+msgstr ""
+
+#. translators: %s: Tap refund id.
+#: includes/class-tap-order-processor.php:633
+msgid "refunded (refund ID %s)"
+msgstr ""
+
+#: includes/class-tap-cancellation-handler.php:137
+msgid "the REST API"
+msgstr ""
+
+#: includes/class-tap-cancellation-handler.php:143
+msgid "the admin dashboard"
+msgstr ""
+
+#: includes/class-tap-cancellation-handler.php:145
+msgid "the storefront"
+msgstr ""
+
+#: includes/class-tap-cancellation-handler.php:128
+msgid "the unpaid-order hold-stock timeout"
+msgstr ""
+
+#. translators: %s: error message from Tap.
+#: includes/class-tap-order-processor.php:647
+msgid "void FAILED (%s) — reverse this authorization manually"
+msgstr ""
+
+#: includes/blocks/class-wc-tap-blocks-support.php:65
+msgid "wc-tap-gateway"
+msgstr ""
+

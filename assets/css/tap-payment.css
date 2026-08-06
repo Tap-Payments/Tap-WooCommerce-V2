@@ -1,0 +1,52 @@
+/**
+ * Styles for the Tap checkout.
+ */
+
+.wc_payment_method > label:first-of-type img {
+	float: revert;
+	max-height: 24px;
+	width: auto;
+}
+
+.tap-checkout-root {
+	min-height: 1px;
+}
+
+.tap-loading-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 99999;
+	display: none;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	background: rgba(255, 255, 255, 0.92);
+}
+
+.tap-loading-overlay .tap-spinner {
+	width: 48px;
+	height: 48px;
+	border: 5px solid #e0e0e0;
+	border-top-color: #2d8cff;
+	border-radius: 50%;
+	animation: tap-spin 1s linear infinite;
+}
+
+.tap-loading-overlay .tap-loading-text {
+	margin-top: 16px;
+	font-size: 16px;
+	color: #333;
+	font-family: inherit;
+}
+
+@keyframes tap-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.tap-loading-overlay .tap-spinner {
+		animation-duration: 4s;
+	}
+}

@@ -1,0 +1,14 @@
+parameters:
+    level: 5
+    paths:
+        - tap.php
+        - uninstall.php
+        - includes
+    bootstrapFiles:
+        - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+    scanDirectories:
+        - includes
+    treatPhpDocTypesAsCertain: false
+
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon

@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<ruleset name="WooCommerce Tap Gateway">
+	<description>Coding standards for the Tap WooCommerce payment gateway.</description>
+
+	<file>.</file>
+
+	<exclude-pattern>/vendor/*</exclude-pattern>
+	<exclude-pattern>/node_modules/*</exclude-pattern>
+	<exclude-pattern>/build/*</exclude-pattern>
+
+	<arg name="extensions" value="php"/>
+	<arg name="colors"/>
+	<arg value="ps"/>
+	<arg name="cache" value=".phpcs.cache"/>
+
+	<config name="minimum_wp_version" value="6.4"/>
+	<config name="testVersion" value="8.1-"/>
+
+	<rule ref="WordPress">
+		<!-- The plugin uses a class-per-file layout with WordPress-style class
+		     names, not the wp.org one-class-per-prefixed-file convention. -->
+		<exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
+	</rule>
+
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array" value="wc-tap-gateway"/>
+		</properties>
+	</rule>
+
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="tap"/>
+				<element value="wc_tap"/>
+				<element value="Tap_"/>
+				<element value="WC_Tap_"/>
+				<element value="TAP_GATEWAY"/>
+			</property>
+		</properties>
+	</rule>
+
+	<rule ref="PHPCompatibilityWP"/>
+</ruleset>

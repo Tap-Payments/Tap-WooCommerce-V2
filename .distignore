@@ -1,0 +1,17 @@
+/.git
+/.github
+/.gitignore
+/.distignore
+/.phpcs.cache
+/.phpunit.result.cache
+/bin
+/vendor
+/node_modules
+/tests
+composer.json
+composer.lock
+phpcs.xml
+phpstan.neon
+CODE-REVIEW.md
+*.zip
+.DS_Store
