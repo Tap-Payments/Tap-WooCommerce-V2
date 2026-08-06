@@ -31,7 +31,7 @@ The notification (webhook) URL is sent to Tap with every transaction, so there i
 | Payment mode | `Charge` captures immediately. `Authorize` places a hold; those orders go **on hold** for you to capture in the Tap dashboard. |
 | Checkout mode | `Redirect` or `Popup`. |
 | Success / Failure page | Optional. Leave unset to use the standard WooCommerce order-received page and checkout. |
-| Debug log | Detailed diagnostics in **WooCommerce → Status → Logs** under the `tap` source. Errors are always logged. Keys and card numbers are redacted. |
+| Debug log | Detailed diagnostics in **WooCommerce → Status → Logs** under the `tap_payments` source. Errors are always logged. Keys and card numbers are redacted. |
 
 ## Architecture
 

@@ -54,7 +54,7 @@ every transaction.
 
 = Where are the logs? =
 
-**WooCommerce > Status > Logs**, under the `tap` source. Errors are always
+**WooCommerce > Status > Logs**, under the `tap_payments` source. Errors are always
 logged. Enable **Debug log** in the gateway settings for detailed diagnostics.
 API keys and card numbers are redacted before anything is written.
 
@@ -74,6 +74,11 @@ in fact paid.
 == Changelog ==
 
 = 3.0.4 =
+
+Changed:
+* Logs are now written under the "tap_payments" source instead of "tap". Older
+  entries stay under the previous source; new entries appear under the new one
+  in WooCommerce > Status > Logs.
 
 Fixed:
 * A payment landing on an order WooCommerce had already cancelled was

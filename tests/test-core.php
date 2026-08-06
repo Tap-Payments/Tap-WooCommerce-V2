@@ -71,6 +71,16 @@ TapTest::not_ok( 'from_throwable is not success', $thrown->is_success() );
 TapTest::is( 'from_throwable has status 0', $thrown->get_status_code(), 0 );
 TapTest::ok( 'from_throwable names the class', str_contains( $thrown->get_error_message(), 'TypeError' ) );
 
+TapTest::group( 'Tap_Logger: log source' );
+
+// The source sets the log filename and the entry in WooCommerce's log source
+// dropdown, so merchants and support scripts depend on it staying stable.
+TapTest::is( 'source is tap_payments', Tap_Logger::SOURCE, 'tap_payments' );
+TapTest::not_ok(
+	'the source is not hardcoded past the constant',
+	str_contains( (string) file_get_contents( TAP_GATEWAY_PATH . 'includes/class-tap-logger.php' ), "'source' => 'tap'" )
+);
+
 TapTest::group( 'Tap_Logger: redaction' );
 
 TapTest::is( 'redacts a live secret key', Tap_Logger::redact( 'key=sk_live_abcdef123456' ), 'key=sk_live_***' );

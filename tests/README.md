@@ -44,4 +44,4 @@ Everything below has to be verified against a real install:
 4. A declined card: confirm the order lands **failed** with the reason shown.
 5. A webhook: confirm settlement with the browser closed immediately after
    paying, so the return handler cannot be what settles the order.
-6. Check `WooCommerce > Status > Logs`, source `tap`, for warnings.
+6. Check `WooCommerce > Status > Logs`, source `tap_payments`, for warnings.

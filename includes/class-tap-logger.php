@@ -10,7 +10,7 @@ declare( strict_types=1 );
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Writes to the WooCommerce log under the "tap" source, with levels, a
+ * Writes to the WooCommerce log under the "tap_payments" source, with levels, a
  * per-request correlation id, and redaction of anything that looks like an API
  * key or a card number.
  *
@@ -18,6 +18,14 @@ defined( 'ABSPATH' ) || exit;
  * is enabled, so the log stays usable in production.
  */
 final class Tap_Logger {
+
+	/**
+	 * WooCommerce log source.
+	 *
+	 * Determines the log filename and the entry in the source dropdown under
+	 * WooCommerce > Status > Logs.
+	 */
+	public const SOURCE = 'tap_payments';
 
 	/**
 	 * Correlation id shared by every log line in the current request.
@@ -190,19 +198,19 @@ final class Tap_Logger {
 
 			$logger = self::get_logger();
 			if ( $logger instanceof WC_Logger_Interface ) {
-				$logger->log( $level, $line, array( 'source' => 'tap' ) );
+				$logger->log( $level, $line, array( 'source' => self::SOURCE ) );
 				return;
 			}
 
 			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Fallback only when WooCommerce logging is unavailable.
-				error_log( 'Tap [' . $level . ']: ' . $line );
+				error_log( '[' . self::SOURCE . '] ' . $level . ': ' . $line );
 			}
 		} catch ( Throwable $e ) {
 			// Last resort. Deliberately swallowed: there is nowhere left to report.
 			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- The logging path itself failed.
-				error_log( 'Tap logger failed: ' . $e->getMessage() );
+				error_log( '[' . self::SOURCE . '] logger failed: ' . $e->getMessage() );
 			}
 		}
 	}
