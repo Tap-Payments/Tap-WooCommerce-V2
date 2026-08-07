@@ -157,14 +157,16 @@ jQuery('#submit_tap_payment_form').on('click', function() {
 
         // Redirect the customer into the failure flow when the Tap SDK cannot be
         // loaded or the checkout UI never renders. An empty tap_id makes the
-        // server cancel the pending order and show the "Transaction Failed" page.
-        function tapFailover(reason) {
+        // server cancel the pending order; tap_failover_msg is shown on the
+        // failure page (defaults to "Something went wrong").
+        function tapFailover(reason, customerMessage) {
             if (tapFailedOver) { return; }
             tapFailedOver = true;
             console.error('Tap checkout failover:', reason);
             if (tapRenderWatchdog) { clearTimeout(tapRenderWatchdog); tapRenderWatchdog = null; }
             showTapLoading('Loading…');
-            window.location = `${redirect_url}&tap_id=`;
+            var msg = encodeURIComponent(customerMessage || 'Something went wrong');
+            window.location = `${redirect_url}&tap_id=&tap_failover_msg=${msg}`;
         }
 
         // Poll for the Tap SDK for up to 20s before giving up (guards against the
@@ -327,7 +329,7 @@ jQuery('#submit_tap_payment_form').on('click', function() {
                 showTapLoading('Loading…');
             }
             waitForTapSDK(tapDoRender, function () {
-                tapFailover('TapSDKs failed to load within 20s');
+                tapFailover('TapSDKs failed to load within timeout', 'Something went wrong');
             });
         };
     

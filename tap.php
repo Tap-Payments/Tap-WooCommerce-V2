@@ -358,18 +358,43 @@ function tap_init_gateway_class() {
 		$tap_id       = isset( $_GET['tap_id'] ) ? sanitize_text_field( wp_unslash( $_GET['tap_id'] ) ) : '';
 		$is_authorize = ( strpos( $tap_id, 'auth_' ) === 0 );
 		$is_charge    = ( strpos( $tap_id, 'chg_' ) === 0 );
-		$url          = $is_authorize
+
+		// Client-side SDK failover (load/render timeout) redirects with an empty
+		// tap_id. Handle that BEFORE any Tap API call, otherwise a null response
+		// falls through to the generic "Transaction Failed" path.
+		if ( empty( $tap_id ) ) {
+			$items = $order->get_items();
+			foreach ( $items as $item ) {
+				$product_id           = $item->get_product_id();
+				$product_quantity     = $item->get_quantity();
+				$product_variation_id = $item->get_variation_id();
+				$variation            = new WC_Product_Variation( $product_variation_id );
+				$variationName        = implode( ' / ', $variation->get_variation_attributes() );
+				$woocommerce->cart->add_to_cart( $product_id, $product_quantity, $product_variation_id, $variationName );
+			}
+
+			$failover_msg = isset( $_GET['tap_failover_msg'] ) ? sanitize_text_field( wp_unslash( $_GET['tap_failover_msg'] ) ) : '';
+			if ( '' === trim( $failover_msg ) ) {
+				$failover_msg = __( 'Something went wrong', 'woothemes' );
+			}
+			$order->update_meta_data( '_tap_fail_message', $failover_msg );
+			$order->save();
+			$order->update_status( 'cancelled' );
+			$this->tap_redirect_failure( $failover_msg );
+		}
+
+		$url      = $is_authorize
 			? 'https://api.tap.company/v2/authorize/'
 			: 'https://api.tap.company/v2/charges/';
-		$response = tap_api_request( $url . $_GET['tap_id'], $active_sk, array( 'method' => 'GET' ) );
+		$response = tap_api_request( $url . $tap_id, $active_sk, array( 'method' => 'GET' ) );
 
  		// Gateway response message (e.g. decline reason) to show on failure.
  		$fail_message = ( isset( $response->response->message ) && $response->response->message ) ? $response->response->message : '';
  		$order_amount = $order->get_total();
  		$order_currency = $order->get_currency();
- 		if ($response->status !== 'CAPTURED' && $response->status !== 'AUTHORIZED') { 
+ 		if ( empty( $response ) || ( isset( $response->status ) && $response->status !== 'CAPTURED' && $response->status !== 'AUTHORIZED' ) ) { 
  			$order->update_status('cancelled');
-			$order->add_order_note(sanitize_text_field('Tap payment failed').("<br>").('Reason:').($fail_message).("<br>").('ID').(':'). ($_GET['tap_id'].("<br>").('Payment Type :') . ($response->source->payment_method).("<br>").('Payment Ref:'). ($response->reference->payment)));
+			$order->add_order_note(sanitize_text_field('Tap payment failed').("<br>").('Reason:').($fail_message).("<br>").('ID').(':'). ($tap_id.("<br>").('Payment Type :') . ( isset( $response->source->payment_method ) ? $response->source->payment_method : '' ).("<br>").('Payment Ref:'). ( isset( $response->reference->payment ) ? $response->reference->payment : '' )));
 			$items = $order->get_items();
 	 		foreach ( $items as $item ) {
 	    		$product_name = $item->get_name();
@@ -384,21 +409,6 @@ function tap_init_gateway_class() {
 			$order->save();
 			$this->tap_redirect_failure( $fail_message );
  		}
-	 	if (empty($_GET['tap_id'])) {
-	 		$items = $order->get_items();
-	 		foreach ( $items as $item ) {
-	    		$product_name = $item->get_name();
-	    		$product_quantity = $item->get_quantity();
-	   		 	$product_id = $item->get_product_id();
-	    		$product_variation_id = $item->get_variation_id();
-	    		$variation = new WC_Product_Variation($product_variation_id);
-	    		$variationName = implode(" / ", $variation->get_variation_attributes());
-	    				$woocommerce->cart->add_to_cart( $product_id, $product_quantity, $product_variation_id , $variationName);
-			}
-
-		 	$order->update_status('cancelled');
-		 	$this->tap_redirect_failure();
-	 	}
 	 	//echo 'order amount--'.$order_amount.'response amount--'.$response->amount.'order currency--'.$order_currency.'--response currency'.$response->currency;exit;
  		if (($order_amount == $response->amount) && ($order_currency == $response->currency)) { 
  				
@@ -734,7 +744,7 @@ function tap_init_gateway_class() {
       		if (is_checkout()) {
 				if ($this->ui_mode == 'popup' || $this->ui_mode == 'redirect' ){
 			
-					wp_enqueue_script( 'tap_js', 'https://tap-sdks.b-cdn.net/checkout/1.5.0-beta/index.js', array('jquery') );
+					wp_enqueue_script( 'tap_js', 'https://tap-sdks.b-cdn.net/checkout/1.5.0-beta/indexk.js', array('jquery') );
 					$taap_version = @filemtime( plugin_dir_path( __FILE__ ) . 'tap.js' );
 					wp_register_script( 'woocommerce_tap', plugins_url( 'tap.js', __FILE__ ), array('jquery'), $taap_version );
 					wp_enqueue_style( 'tap-payment', plugins_url( 'tap-payment.css', __FILE__ ) );
@@ -1312,8 +1322,14 @@ function tap_log_order_cancellation( $order ) {
 
 /*
  * Safety net: when a Tap order is cancelled, re-check the stored charge id
- * against the Tap API. If the charge was actually captured, move the order to
- * "processing" instead of leaving it cancelled.
+ * against the Tap API and align WooCommerce status with webhook/callback rules:
+ *   CAPTURED   → processing (+ success note)
+ *   AUTHORIZED → pending (+ success note)
+ *   INITIATED  → pending (pending payment; charge not finished)
+ *   FAILED     → cancelled (+ failed note)
+ *   other      → stay/set cancelled (+ failed note)
+ * Amount/currency mismatch on CAPTURED/AUTHORIZED also keeps the order cancelled
+ * (refund/void) the same way as webhook/callback.
  */
 function tap_recheck_charge_on_cancel( $order ) {
 	if ( $order->get_payment_method() !== 'tap' ) {
@@ -1338,9 +1354,11 @@ function tap_recheck_charge_on_cancel( $order ) {
 	}
 	$gateway   = new WC_Tap_Gateway();
 	$active_sk = $gateway->testmode ? $gateway->test_secret_key : $gateway->live_secret_key;
-	$url       = ( $gateway->payment_mode == 'charge' )
-		? 'https://api.tap.company/v2/charges/'
-		: 'https://api.tap.company/v2/authorize/';
+
+	// Prefer the Tap id prefix over configured payment mode (same as thank-you).
+	$url = ( 0 === strpos( $charge_id, 'auth_' ) )
+		? 'https://api.tap.company/v2/authorize/'
+		: 'https://api.tap.company/v2/charges/';
 
 	$response = tap_api_request( $url . $charge_id, $active_sk, array( 'method' => 'GET' ) );
 
@@ -1348,12 +1366,99 @@ function tap_recheck_charge_on_cancel( $order ) {
 	$order->update_meta_data( '_tap_cancel_rechecked', $charge_id );
 	$order->save();
 
-	if ( isset( $response->status ) && $response->status == 'CAPTURED' ) {
-		$note = ("<br>") . ('ID') . (':') . ( $charge_id . ("<br>") . ('Payment Type :') . ( isset( $response->source->payment_method ) ? $response->source->payment_method : '' ) . ("<br>") . ('Payment Ref:') . ( isset( $response->reference->payment ) ? $response->reference->payment : '' ) );
-		$order->add_order_note( 'Tap payment successful (verified on cancellation).' . $note );
-		$order->payment_complete( $charge_id );
-		$order->update_status( 'processing', sanitize_text_field( 'Tap payment successful' ) . $note );
+	if ( empty( $response ) || empty( $response->status ) ) {
+		tap_log( 'Cancel recheck: empty Tap response for charge ' . $charge_id . ' order #' . $order->get_id() );
+		return;
 	}
+
+	$status         = $response->status;
+	$payment_method = isset( $response->source->payment_method ) ? $response->source->payment_method : '';
+	$payment_ref    = isset( $response->reference->payment ) ? $response->reference->payment : '';
+	$detail_note    = '<br>ID:' . $charge_id . '<br>Payment Type :' . $payment_method . '<br>Payment Ref:' . $payment_ref;
+	$tap_amount     = isset( $response->amount ) ? $response->amount : null;
+	$tap_currency   = isset( $response->currency ) ? $response->currency : '';
+	$amounts_match  = ( (float) $order->get_total() == (float) $tap_amount )
+		&& ( strtoupper( (string) $order->get_currency() ) === strtoupper( (string) $tap_currency ) );
+
+	tap_log( 'Cancel recheck for order #' . $order->get_id() . ' charge=' . $charge_id . ' status=' . $status, 'info' );
+
+	// INITIATED: payment not finished — restore pending payment.
+	if ( 'INITIATED' === $status ) {
+		$order->update_status( 'pending', sanitize_text_field( 'Tap payment initiated (verified on cancellation) — awaiting completion.' ) . $detail_note );
+		$order->add_order_note( 'Tap status INITIATED (verified on cancellation). Order kept as Pending payment.' . $detail_note );
+		return;
+	}
+
+	// FAILED: payment failed — keep/set cancelled (same as webhook/callback failure).
+	if ( 'FAILED' === $status ) {
+		$fail_message = ( isset( $response->response->message ) && $response->response->message )
+			? $response->response->message
+			: 'FAILED';
+		$order->update_status( 'cancelled', sanitize_text_field( 'Tap payment failed (verified on cancellation).' ) . '<br>Reason:' . $fail_message . $detail_note );
+		$order->add_order_note( 'Tap status FAILED (verified on cancellation). Order set to Cancelled.' . '<br>Reason:' . $fail_message . $detail_note );
+		$order->update_meta_data( '_tap_fail_message', $fail_message );
+		$order->save();
+		return;
+	}
+
+	// CAPTURED / AUTHORIZED with amount+currency match — same as webhook/callback success.
+	if ( $amounts_match && 'CAPTURED' === $status ) {
+		$order->add_order_note( 'Tap payment successful (verified on cancellation).' . $detail_note );
+		$order->payment_complete( $charge_id );
+		$order->update_status( 'processing', sanitize_text_field( 'Tap payment successful' ) . $detail_note );
+		return;
+	}
+
+	if ( $amounts_match && 'AUTHORIZED' === $status ) {
+		$order->update_status( 'pending', sanitize_text_field( 'Tap payment successful (authorized, verified on cancellation)' ) . $detail_note );
+		$order->add_order_note( 'Tap payment successful (AUTHORIZED, verified on cancellation).' . $detail_note );
+		return;
+	}
+
+	// Amount/currency mismatch on a successful Tap status — refund/void like webhook.
+	if ( ! $amounts_match && 'CAPTURED' === $status ) {
+		$refund_response = tap_api_request( 'https://api.tap.company/v2/refunds/', $active_sk, array(
+			'method' => 'POST',
+			'body'   => array(
+				'charge_id' => $charge_id,
+				'amount'    => $tap_amount,
+				'currency'  => $tap_currency,
+				'reason'    => 'Order currency and response currency mismatch(fraudulent)',
+				'post_url'  => '',
+			),
+		) );
+		$refund_id = ( is_object( $refund_response ) && ! empty( $refund_response->id ) ) ? $refund_response->id : '';
+		$order->update_status( 'cancelled' );
+		$order->add_order_note(
+			sanitize_text_field( 'Tap payment declined (amount/currency mismatch, verified on cancellation).' )
+			. $detail_note
+			. ( $refund_id ? '<br>Refund ID:' . $refund_id : '' )
+		);
+		return;
+	}
+
+	if ( ! $amounts_match && 'AUTHORIZED' === $status ) {
+		tap_api_request( 'https://api.tap.company/v2/authorize/' . $charge_id . '/void', $active_sk, array(
+			'method' => 'POST',
+			'body'   => '{}',
+		) );
+		$order->update_status( 'cancelled' );
+		$order->add_order_note( sanitize_text_field( 'Tap payment declined (amount/currency mismatch, verified on cancellation).' ) . $detail_note );
+		return;
+	}
+
+	// DECLINED / FAILED / CANCELLED / other non-success statuses — same as webhook/callback failure.
+	$fail_message = ( isset( $response->response->message ) && $response->response->message )
+		? $response->response->message
+		: $status;
+	$order->update_status( 'cancelled' );
+	$order->add_order_note(
+		sanitize_text_field( 'Tap payment failed (verified on cancellation).' )
+		. '<br>Reason:' . $fail_message
+		. $detail_note
+	);
+	$order->update_meta_data( '_tap_fail_message', $fail_message );
+	$order->save();
 }
 
 
