@@ -1281,6 +1281,72 @@ function tap_ajax_save_charge_id() {
  */
 add_action( 'woocommerce_order_status_cancelled', 'tap_handle_order_cancelled', 5, 2 );
 
+/**
+ * Before WooCommerce hold-stock cancels an unpaid order, check Tap. If the
+ * charge is still INITIATED (or already CAPTURED/AUTHORIZED), do not cancel —
+ * that avoids the default "Unpaid order cancelled – time limit reached" notes
+ * on an order that should stay pending/processing.
+ *
+ * @param bool     $should_cancel Whether WC would cancel the unpaid order.
+ * @param WC_Order $order         Order being considered.
+ * @return bool
+ */
+add_filter( 'woocommerce_cancel_unpaid_order', 'tap_maybe_prevent_unpaid_cancel', 10, 2 );
+
+function tap_maybe_prevent_unpaid_cancel( $should_cancel, $order ) {
+	if ( ! $should_cancel || ! ( $order instanceof WC_Order ) ) {
+		return $should_cancel;
+	}
+	if ( 'tap' !== $order->get_payment_method() ) {
+		return $should_cancel;
+	}
+
+	$charge_id = $order->get_meta( '_tap_charge_id' );
+	if ( empty( $charge_id ) ) {
+		$charge_id = $order->get_transaction_id();
+	}
+	if ( empty( $charge_id ) || ! class_exists( 'WC_Tap_Gateway' ) ) {
+		return $should_cancel;
+	}
+
+	$gateway   = new WC_Tap_Gateway();
+	$active_sk = $gateway->testmode ? $gateway->test_secret_key : $gateway->live_secret_key;
+	$url       = ( 0 === strpos( $charge_id, 'auth_' ) )
+		? 'https://api.tap.company/v2/authorize/'
+		: 'https://api.tap.company/v2/charges/';
+
+	$response = tap_api_request( $url . $charge_id, $active_sk, array( 'method' => 'GET' ) );
+	$status   = ( is_object( $response ) && ! empty( $response->status ) ) ? $response->status : '';
+
+	if ( in_array( $status, array( 'INITIATED', 'CAPTURED', 'AUTHORIZED' ), true ) ) {
+		tap_log(
+			'Skipped unpaid hold-stock cancel for order #' . $order->get_id()
+			. ' (Tap status=' . $status . ', charge=' . $charge_id . ')',
+			'info'
+		);
+
+		// CAPTURED unpaid orders should be completed, not left pending forever.
+		if ( 'CAPTURED' === $status ) {
+			$tap_amount    = isset( $response->amount ) ? $response->amount : null;
+			$tap_currency  = isset( $response->currency ) ? $response->currency : '';
+			$amounts_match = ( (float) $order->get_total() == (float) $tap_amount )
+				&& ( strtoupper( (string) $order->get_currency() ) === strtoupper( (string) $tap_currency ) );
+			if ( $amounts_match && 'pending' === $order->get_status() ) {
+				$order->payment_complete( $charge_id );
+				$order->update_status(
+					'processing',
+					sanitize_text_field( 'Tap payment successful (verified before unpaid cancel).' )
+					. '<br>ID:' . $charge_id
+				);
+			}
+		}
+
+		return false;
+	}
+
+	return $should_cancel;
+}
+
 function tap_handle_order_cancelled( $order_id, $order = null ) {
 	if ( ! ( $order instanceof WC_Order ) ) {
 		$order = wc_get_order( $order_id );
@@ -1328,6 +1394,19 @@ function tap_log_order_cancellation( $order ) {
 	if ( false !== stripos( $uri, 'tap_webhook' )
 		|| ( isset( $_GET['wc-api'] ) && 'tap_webhook' === strtolower( sanitize_text_field( wp_unslash( $_GET['wc-api'] ) ) ) ) ) {
 		return;
+	}
+
+	// Hold-stock unpaid cancel for Tap orders with a charge id: skip the audit
+	// note. Recheck may restore INITIATED/CAPTURED orders, so this should not
+	// look like a real cancellation in the notes.
+	if ( doing_action( 'woocommerce_cancel_unpaid_orders' ) && 'tap' === $order->get_payment_method() ) {
+		$charge_id = $order->get_meta( '_tap_charge_id' );
+		if ( empty( $charge_id ) ) {
+			$charge_id = $order->get_transaction_id();
+		}
+		if ( ! empty( $charge_id ) ) {
+			return;
+		}
 	}
 
 	// Who triggered it.
@@ -1390,6 +1469,59 @@ function tap_log_order_cancellation( $order ) {
  * Amount/currency mismatch on CAPTURED/AUTHORIZED also keeps the order cancelled
  * (refund/void) the same way as webhook/callback.
  */
+
+/**
+ * Remove WooCommerce default unpaid-cancel notes after a cancel attempt is
+ * reversed (e.g. Tap status INITIATED → restore to pending). Only touches
+ * recent notes so older history is kept.
+ *
+ * @param WC_Order $order Order object.
+ */
+function tap_remove_attempted_cancel_notes( $order ) {
+	if ( ! ( $order instanceof WC_Order ) || ! function_exists( 'wc_get_order_notes' ) ) {
+		return;
+	}
+
+	$notes = wc_get_order_notes( array(
+		'order_id' => $order->get_id(),
+		'limit'    => 20,
+		'orderby'  => 'date_created',
+		'order'    => 'DESC',
+	) );
+
+	$cutoff = time() - 300; // last 5 minutes only
+
+	foreach ( $notes as $note ) {
+		$content = isset( $note->content ) ? wp_strip_all_tags( $note->content ) : '';
+		$created = ( isset( $note->date_created ) && is_object( $note->date_created ) )
+			? $note->date_created->getTimestamp()
+			: 0;
+
+		if ( $created && $created < $cutoff ) {
+			continue;
+		}
+
+		$remove = (
+			false !== stripos( $content, 'Unpaid order cancelled' )
+			|| false !== stripos( $content, 'Pending payment to Cancelled' )
+			|| false !== stripos( $content, 'pending payment to cancelled' )
+			|| (
+				false !== stripos( $content, 'Order cancelled by:' )
+				&& false !== stripos( $content, 'unpaid hold-stock' )
+			)
+		);
+
+		if ( $remove && ! empty( $note->id ) ) {
+			// Prefer WC helper when available (HPOS-safe); fall back to wp_delete_comment.
+			if ( function_exists( 'wc_delete_order_note' ) ) {
+				wc_delete_order_note( $note->id );
+			} else {
+				wp_delete_comment( $note->id, true );
+			}
+		}
+	}
+}
+
 function tap_recheck_charge_on_cancel( $order ) {
 	if ( $order->get_payment_method() !== 'tap' ) {
 		return;
@@ -1403,10 +1535,7 @@ function tap_recheck_charge_on_cancel( $order ) {
 		return;
 	}
 
-	// Prevent re-processing the same charge more than once.
-	if ( $order->get_meta( '_tap_cancel_rechecked' ) === $charge_id ) {
-		return;
-	}
+
 
 	if ( ! class_exists( 'WC_Tap_Gateway' ) ) {
 		return;
@@ -1422,8 +1551,7 @@ function tap_recheck_charge_on_cancel( $order ) {
 	$response = tap_api_request( $url . $charge_id, $active_sk, array( 'method' => 'GET' ) );
 
 	// Mark as rechecked regardless, so we don't hit the API repeatedly.
-	$order->update_meta_data( '_tap_cancel_rechecked', $charge_id );
-	$order->save();
+
 
 	if ( empty( $response ) || empty( $response->status ) ) {
 		tap_log( 'Cancel recheck: empty Tap response for charge ' . $charge_id . ' order #' . $order->get_id() );
@@ -1447,8 +1575,10 @@ function tap_recheck_charge_on_cancel( $order ) {
 		: $status;
 
 	if ( 'INITIATED' === $status ) {
-		// Payment not finished — restore pending payment.
+		// Payment not finished — restore pending payment and drop WC's default
+		// unpaid-cancel notes from the attempted cancellation.
 		$order->update_status( 'pending', sanitize_text_field( 'Tap payment initiated (verified on cancellation) — awaiting completion.' ) . $detail_note );
+		tap_remove_attempted_cancel_notes( $order );
 
 	} elseif ( in_array( $status, array( 'FAILED', 'DECLINED', 'CANCELLED' ), true ) ) {
 		// Stay cancelled; skip extra notes if thank-you/webhook already cancelled.
@@ -1464,9 +1594,11 @@ function tap_recheck_charge_on_cancel( $order ) {
 	} elseif ( $amounts_match && 'CAPTURED' === $status ) {
 		$order->payment_complete( $charge_id );
 		$order->update_status( 'processing', sanitize_text_field( 'Tap payment successful (verified on cancellation)' ) . $detail_note );
+		tap_remove_attempted_cancel_notes( $order );
 
 	} elseif ( $amounts_match && 'AUTHORIZED' === $status ) {
 		$order->update_status( 'pending', sanitize_text_field( 'Tap payment successful (AUTHORIZED, verified on cancellation)' ) . $detail_note );
+		tap_remove_attempted_cancel_notes( $order );
 
 	} elseif ( ! $amounts_match && 'CAPTURED' === $status ) {
 		// Amount/currency mismatch — refund like webhook/callback.
@@ -1514,6 +1646,7 @@ function tap_recheck_charge_on_cancel( $order ) {
 			$order->save();
 		}
 	}
+	return;
 }
 
 
