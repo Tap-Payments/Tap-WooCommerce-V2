@@ -85,7 +85,7 @@ function tap_api_request( $url, $secret_key, $args = array() ) {
 			CURLOPT_RETURNTRANSFER => true,
 			CURLOPT_ENCODING       => '',
 			CURLOPT_MAXREDIRS      => 10,
-			CURLOPT_TIMEOUT        => 30,
+			CURLOPT_TIMEOUT        => 60,
 			CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_1_1,
 			CURLOPT_CUSTOMREQUEST  => strtoupper( $args['method'] ),
 			CURLOPT_HTTPHEADER     => $headers,
@@ -223,9 +223,11 @@ function tap_init_gateway_class() {
       		
 
         	if ($status !== 'CAPTURED' && $status !== 'AUTHORIZED') { 
-        		$order->update_status('cancelled');
-           	$order->add_order_note(sanitize_text_field('Tap payment failed..').("<br>").('ID').(':'). ($charge_id.("<br>").('Payment Type :') . ($data['source']['payment_method']).("<br>").('Payment Ref:'). ($data['reference']['payment'])));
-
+        		tap_flag_payment_auto_cancel( $order );
+        		$order->update_status(
+        			'cancelled',
+        			sanitize_text_field( 'Tap payment failed..' ) . ("<br>") . ('ID') . (':') . ( $charge_id . ("<br>") . ('Payment Type :') . ( isset( $data['source']['payment_method'] ) ? $data['source']['payment_method'] : '' ) . ("<br>") . ('Payment Ref:') . ( isset( $data['reference']['payment'] ) ? $data['reference']['payment'] : '' ) )
+        		);
         	}
         	if (($order_amount == $data['amount']) && ($order_currency == $data['currency'])) {
 		        if ($status == 'CAPTURED'){
@@ -252,8 +254,11 @@ function tap_init_gateway_class() {
                     'method' => 'POST',
                     'body'   => $refund_object,
                 ) );
-            	$order->update_status('cancelled');
-	         	$order->add_order_note(sanitize_text_field('Tap payment decllined..').("<br>").('ID').(':'). ($charge_id.("<br>").('Payment Type :') . ($data['source']['payment_method']).("<br>").('Payment Ref:'). ($data['reference']['payment']). ('Refund ID' ) . $refund_response->id));
+            	tap_flag_payment_auto_cancel( $order );
+            	$order->update_status(
+            		'cancelled',
+            		sanitize_text_field( 'Tap payment decllined..' ) . ("<br>") . ('ID') . (':') . ( $charge_id . ("<br>") . ('Payment Type :') . ( isset( $data['source']['payment_method'] ) ? $data['source']['payment_method'] : '' ) . ("<br>") . ('Payment Ref:') . ( isset( $data['reference']['payment'] ) ? $data['reference']['payment'] : '' ) . ('Refund ID' ) . ( isset( $refund_response->id ) ? $refund_response->id : '' ) )
+            	);
 	      	}
 
 	      	if ($data['status'] == 'AUTHORIZED') {
@@ -263,8 +268,11 @@ function tap_init_gateway_class() {
                     'body'   => '{}',
                 ) );
 
-               	$order->update_status('cancelled');
-	         	$order->add_order_note(sanitize_text_field('Tap payment decllined..').("<br>").('ID').(':'). ($charge_id.("<br>").('Payment Type :') . ($data['source']['payment_method']).("<br>").('Payment Ref:'). ($data['reference']['payment'])));
+               	tap_flag_payment_auto_cancel( $order );
+               	$order->update_status(
+               		'cancelled',
+               		sanitize_text_field( 'Tap payment decllined..' ) . ("<br>") . ('ID') . (':') . ( $charge_id . ("<br>") . ('Payment Type :') . ( isset( $data['source']['payment_method'] ) ? $data['source']['payment_method'] : '' ) . ("<br>") . ('Payment Ref:') . ( isset( $data['reference']['payment'] ) ? $data['reference']['payment'] : '' ) )
+               	);
 	      	}
 	    }
   
@@ -379,7 +387,8 @@ function tap_init_gateway_class() {
 			}
 			$order->update_meta_data( '_tap_fail_message', $failover_msg );
 			$order->save();
-			$order->update_status( 'cancelled' );
+			tap_flag_payment_auto_cancel( $order );
+			$order->update_status( 'cancelled', $failover_msg );
 			$this->tap_redirect_failure( $failover_msg );
 		}
 
@@ -393,8 +402,9 @@ function tap_init_gateway_class() {
  		$order_amount = $order->get_total();
  		$order_currency = $order->get_currency();
  		if ( empty( $response ) || ( isset( $response->status ) && $response->status !== 'CAPTURED' && $response->status !== 'AUTHORIZED' ) ) { 
- 			$order->update_status('cancelled');
-			$order->add_order_note(sanitize_text_field('Tap payment failed').("<br>").('Reason:').($fail_message).("<br>").('ID').(':'). ($tap_id.("<br>").('Payment Type :') . ( isset( $response->source->payment_method ) ? $response->source->payment_method : '' ).("<br>").('Payment Ref:'). ( isset( $response->reference->payment ) ? $response->reference->payment : '' )));
+			$fail_note = sanitize_text_field( 'Tap payment failed' ) . ("<br>") . ('Reason:') . ($fail_message) . ("<br>") . ('ID') . (':') . ( $tap_id . ("<br>") . ('Payment Type :') . ( isset( $response->source->payment_method ) ? $response->source->payment_method : '' ) . ("<br>") . ('Payment Ref:') . ( isset( $response->reference->payment ) ? $response->reference->payment : '' ) );
+			tap_flag_payment_auto_cancel( $order );
+ 			$order->update_status( 'cancelled', $fail_note );
 			$items = $order->get_items();
 	 		foreach ( $items as $item ) {
 	    		$product_name = $item->get_name();
@@ -443,7 +453,8 @@ function tap_init_gateway_class() {
 						} 
 				} 
 				else {
-						$order->update_status('cancelled');
+						tap_flag_payment_auto_cancel( $order );
+						$order->update_status( 'cancelled', $fail_message ? $fail_message : sanitize_text_field( 'Tap payment failed' ) );
 						$order->update_meta_data( '_tap_fail_message', $fail_message );
 						$order->save();
 						$this->tap_redirect_failure( $fail_message );
@@ -463,8 +474,11 @@ function tap_init_gateway_class() {
 					'method' => 'POST',
 					'body'   => $refund_object,
 				) );
-				$order->update_status('cancelled');
-				$order->add_order_note(sanitize_text_field('Tap declined payment error').("<br>").('ID').(':'). ($_GET['tap_id'].("<br>").('Payment Type :') . ($response->source->payment_method).("<br>").('Payment Ref:'). ($response->reference->payment). ('Refund ID').(':') . ($refund_response->id)));
+				tap_flag_payment_auto_cancel( $order );
+				$order->update_status(
+					'cancelled',
+					sanitize_text_field( 'Tap declined payment error' ) . ("<br>") . ('ID') . (':') . ( $_GET['tap_id'] . ("<br>") . ('Payment Type :') . ( $response->source->payment_method ) . ("<br>") . ('Payment Ref:') . ( $response->reference->payment ) . ('Refund ID') . (':') . ( isset( $refund_response->id ) ? $refund_response->id : '' ) )
+				);
 				$this->tap_redirect_failure( __( 'Payment verification failed (amount/currency mismatch).', 'woothemes' ) );
 			}
 
@@ -475,8 +489,11 @@ function tap_init_gateway_class() {
                     'method' => 'POST',
                     'body'   => '{}',
                 ) );
-                $order->update_status('cancelled');
-                $order->add_order_note(sanitize_text_field('Tap declined payment error').("<br>").('ID').(':'). ($_GET['tap_id'].("<br>").('Payment Type :') . ($response->source->payment_method).("<br>").('Payment Ref:'). ($response->reference->payment)));
+                tap_flag_payment_auto_cancel( $order );
+                $order->update_status(
+                	'cancelled',
+                	sanitize_text_field( 'Tap declined payment error' ) . ("<br>") . ('ID') . (':') . ( $_GET['tap_id'] . ("<br>") . ('Payment Type :') . ( $response->source->payment_method ) . ("<br>") . ('Payment Ref:') . ( $response->reference->payment ) )
+                );
                 $this->tap_redirect_failure( __( 'Payment verification failed (amount/currency mismatch).', 'woothemes' ) );
             }
 	 	}
@@ -744,7 +761,7 @@ function tap_init_gateway_class() {
       		if (is_checkout()) {
 				if ($this->ui_mode == 'popup' || $this->ui_mode == 'redirect' ){
 			
-					wp_enqueue_script( 'tap_js', 'https://tap-sdks.b-cdn.net/checkout/1.5.0-beta/indexk.js', array('jquery') );
+					wp_enqueue_script( 'tap_js', 'https://tap-sdks.b-cdn.net/checkout/1.5.0-beta/index.js', array('jquery') );
 					$taap_version = @filemtime( plugin_dir_path( __FILE__ ) . 'tap.js' );
 					wp_register_script( 'woocommerce_tap', plugins_url( 'tap.js', __FILE__ ), array('jquery'), $taap_version );
 					wp_enqueue_style( 'tap-payment', plugins_url( 'tap-payment.css', __FILE__ ) );
@@ -1128,6 +1145,21 @@ function tap_init_gateway_class() {
 				) );
 				$charge_id   = isset( $obj->id ) ? $obj->id : '';
 				$redirct_Url = isset( $obj->transaction->url ) ? $obj->transaction->url : '';
+
+				if ( empty( $charge_id ) || empty( $redirct_Url ) ) {
+					tap_log( 'Redirect charge creation failed for order #' . $orderid );
+					wc_add_notice( __( 'Payment could not be initiated. Please try again.', 'woothemes' ), 'error' );
+					return array( 'result' => 'fail' );
+				}
+
+				// Persist the initiated charge/authorize id (same as popup AJAX save).
+				if ( $order->get_meta( '_tap_charge_id' ) !== $charge_id ) {
+					$order->update_meta_data( '_tap_charge_id', $charge_id );
+					$order->set_transaction_id( $charge_id );
+					$order->add_order_note( sanitize_text_field( 'Tap charge initiated. Charge ID: ' . $charge_id ) );
+					$order->save();
+				}
+				tap_log( 'Redirect charge initiated for order #' . $orderid . ' id=' . $charge_id, 'info' );
 			    
 			    return array(
 					'result'   => 'success',
@@ -1261,11 +1293,43 @@ function tap_handle_order_cancelled( $order_id, $order = null ) {
 	tap_recheck_charge_on_cancel( $order );
 }
 
+/**
+ * Mark the next cancel as a Tap payment-failure auto-cancel so the audit
+ * "Order cancelled by…" note is skipped (that note is only for real
+ * admin/manual cancellations).
+ *
+ * @param WC_Order $order Order object.
+ */
+function tap_flag_payment_auto_cancel( $order ) {
+	if ( ! ( $order instanceof WC_Order ) ) {
+		return;
+	}
+	$order->update_meta_data( '_tap_payment_auto_cancel', '1' );
+	$order->save();
+}
+
 /*
  * Audit log: record who cancelled the order (or attempted the cancellation)
  * and from where, storing the details as an order note and order meta.
+ * Skipped for Tap payment-failure auto-cancels (thank-you / webhook / failover).
  */
 function tap_log_order_cancellation( $order ) {
+	// Payment failed → Tap cancelled the order; do not attribute it to the logged-in user.
+	if ( '1' === $order->get_meta( '_tap_payment_auto_cancel' ) ) {
+		$order->delete_meta_data( '_tap_payment_auto_cancel' );
+		$order->save();
+		return;
+	}
+	// Fallback if a failure path cancelled without the flag (callback / failover URL).
+	if ( isset( $_GET['tap_id'] ) || isset( $_REQUEST['tap_id'] ) || isset( $_GET['tap_failover_msg'] ) ) {
+		return;
+	}
+	$uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+	if ( false !== stripos( $uri, 'tap_webhook' )
+		|| ( isset( $_GET['wc-api'] ) && 'tap_webhook' === strtolower( sanitize_text_field( wp_unslash( $_GET['wc-api'] ) ) ) ) ) {
+		return;
+	}
+
 	// Who triggered it.
 	$user = wp_get_current_user();
 	if ( $user && $user->ID ) {
@@ -1301,14 +1365,9 @@ function tap_log_order_cancellation( $order ) {
 		$ip = sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) );
 	}
 
-	$uri = isset( $_SERVER['REQUEST_URI'] ) ? esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
-
 	$note = 'Order cancelled by: ' . $who . ' | Source: ' . $context;
 	if ( $ip ) {
 		$note .= ' | IP: ' . $ip;
-	}
-	if ( $uri ) {
-		$note .= ' | URL: ' . $uri;
 	}
 
 	$order->add_order_note( $note );
@@ -1382,20 +1441,28 @@ function tap_recheck_charge_on_cancel( $order ) {
 
 	tap_log( 'Cancel recheck for order #' . $order->get_id() . ' charge=' . $charge_id . ' status=' . $status, 'info' );
 
+	$already_cancelled = ( 'cancelled' === $order->get_status() );
+
 	// INITIATED: payment not finished — restore pending payment.
 	if ( 'INITIATED' === $status ) {
 		$order->update_status( 'pending', sanitize_text_field( 'Tap payment initiated (verified on cancellation) — awaiting completion.' ) . $detail_note );
-		$order->add_order_note( 'Tap status INITIATED (verified on cancellation). Order kept as Pending payment.' . $detail_note );
 		return;
 	}
 
-	// FAILED: payment failed — keep/set cancelled (same as webhook/callback failure).
-	if ( 'FAILED' === $status ) {
+	// FAILED / DECLINED / CANCELLED: order should stay cancelled.
+	// If already cancelled (e.g. thank-you/webhook already recorded the failure),
+	// do not add another Tap failure note.
+	if ( in_array( $status, array( 'FAILED', 'DECLINED', 'CANCELLED' ), true ) ) {
+		if ( $already_cancelled ) {
+			return;
+		}
 		$fail_message = ( isset( $response->response->message ) && $response->response->message )
 			? $response->response->message
-			: 'FAILED';
-		$order->update_status( 'cancelled', sanitize_text_field( 'Tap payment failed (verified on cancellation).' ) . '<br>Reason:' . $fail_message . $detail_note );
-		$order->add_order_note( 'Tap status FAILED (verified on cancellation). Order set to Cancelled.' . '<br>Reason:' . $fail_message . $detail_note );
+			: $status;
+		$order->update_status(
+			'cancelled',
+			sanitize_text_field( 'Tap payment failed (verified on cancellation).' ) . '<br>Reason:' . $fail_message . $detail_note
+		);
 		$order->update_meta_data( '_tap_fail_message', $fail_message );
 		$order->save();
 		return;
@@ -1403,15 +1470,13 @@ function tap_recheck_charge_on_cancel( $order ) {
 
 	// CAPTURED / AUTHORIZED with amount+currency match — same as webhook/callback success.
 	if ( $amounts_match && 'CAPTURED' === $status ) {
-		$order->add_order_note( 'Tap payment successful (verified on cancellation).' . $detail_note );
 		$order->payment_complete( $charge_id );
-		$order->update_status( 'processing', sanitize_text_field( 'Tap payment successful' ) . $detail_note );
+		$order->update_status( 'processing', sanitize_text_field( 'Tap payment successful (verified on cancellation)' ) . $detail_note );
 		return;
 	}
 
 	if ( $amounts_match && 'AUTHORIZED' === $status ) {
-		$order->update_status( 'pending', sanitize_text_field( 'Tap payment successful (authorized, verified on cancellation)' ) . $detail_note );
-		$order->add_order_note( 'Tap payment successful (AUTHORIZED, verified on cancellation).' . $detail_note );
+		$order->update_status( 'pending', sanitize_text_field( 'Tap payment successful (AUTHORIZED, verified on cancellation)' ) . $detail_note );
 		return;
 	}
 
@@ -1428,12 +1493,14 @@ function tap_recheck_charge_on_cancel( $order ) {
 			),
 		) );
 		$refund_id = ( is_object( $refund_response ) && ! empty( $refund_response->id ) ) ? $refund_response->id : '';
-		$order->update_status( 'cancelled' );
-		$order->add_order_note(
-			sanitize_text_field( 'Tap payment declined (amount/currency mismatch, verified on cancellation).' )
+		$mismatch_note = sanitize_text_field( 'Tap payment declined (amount/currency mismatch, verified on cancellation).' )
 			. $detail_note
-			. ( $refund_id ? '<br>Refund ID:' . $refund_id : '' )
-		);
+			. ( $refund_id ? '<br>Refund ID:' . $refund_id : '' );
+		if ( $already_cancelled ) {
+			$order->add_order_note( $mismatch_note );
+		} else {
+			$order->update_status( 'cancelled', $mismatch_note );
+		}
 		return;
 	}
 
@@ -1442,20 +1509,26 @@ function tap_recheck_charge_on_cancel( $order ) {
 			'method' => 'POST',
 			'body'   => '{}',
 		) );
-		$order->update_status( 'cancelled' );
-		$order->add_order_note( sanitize_text_field( 'Tap payment declined (amount/currency mismatch, verified on cancellation).' ) . $detail_note );
+		$mismatch_note = sanitize_text_field( 'Tap payment declined (amount/currency mismatch, verified on cancellation).' ) . $detail_note;
+		if ( $already_cancelled ) {
+			$order->add_order_note( $mismatch_note );
+		} else {
+			$order->update_status( 'cancelled', $mismatch_note );
+		}
 		return;
 	}
 
-	// DECLINED / FAILED / CANCELLED / other non-success statuses — same as webhook/callback failure.
+	// Other non-success statuses — same as webhook/callback failure.
+	// Skip extra notes when the order was already cancelled by the failure flow.
+	if ( $already_cancelled ) {
+		return;
+	}
 	$fail_message = ( isset( $response->response->message ) && $response->response->message )
 		? $response->response->message
 		: $status;
-	$order->update_status( 'cancelled' );
-	$order->add_order_note(
-		sanitize_text_field( 'Tap payment failed (verified on cancellation).' )
-		. '<br>Reason:' . $fail_message
-		. $detail_note
+	$order->update_status(
+		'cancelled',
+		sanitize_text_field( 'Tap payment failed (verified on cancellation).' ) . '<br>Reason:' . $fail_message . $detail_note
 	);
 	$order->update_meta_data( '_tap_fail_message', $fail_message );
 	$order->save();

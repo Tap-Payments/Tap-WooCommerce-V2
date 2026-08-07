@@ -178,7 +178,7 @@ jQuery('#submit_tap_payment_form').on('click', function() {
                     onLoaded();
                     return;
                 }
-                if (Date.now() - start >= 60000) {
+                if (Date.now() - start >= 20000) {
                     onTimeout();
                     return;
                 }
@@ -329,7 +329,7 @@ jQuery('#submit_tap_payment_form').on('click', function() {
                 showTapLoading('Loading…');
             }
             waitForTapSDK(tapDoRender, function () {
-                tapFailover('TapSDKs failed to load within timeout', 'Something went wrong');
+                tapFailover('TapSDKs failed to load within 20s', 'Something went wrong');
             });
         };
     
