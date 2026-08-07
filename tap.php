@@ -1442,46 +1442,34 @@ function tap_recheck_charge_on_cancel( $order ) {
 	tap_log( 'Cancel recheck for order #' . $order->get_id() . ' charge=' . $charge_id . ' status=' . $status, 'info' );
 
 	$already_cancelled = ( 'cancelled' === $order->get_status() );
+	$fail_message      = ( isset( $response->response->message ) && $response->response->message )
+		? $response->response->message
+		: $status;
 
-	// INITIATED: payment not finished — restore pending payment.
 	if ( 'INITIATED' === $status ) {
+		// Payment not finished — restore pending payment.
 		$order->update_status( 'pending', sanitize_text_field( 'Tap payment initiated (verified on cancellation) — awaiting completion.' ) . $detail_note );
-		return;
-	}
 
-	// FAILED / DECLINED / CANCELLED: order should stay cancelled.
-	// If already cancelled (e.g. thank-you/webhook already recorded the failure),
-	// do not add another Tap failure note.
-	if ( in_array( $status, array( 'FAILED', 'DECLINED', 'CANCELLED' ), true ) ) {
-		if ( $already_cancelled ) {
-			return;
+	} elseif ( in_array( $status, array( 'FAILED', 'DECLINED', 'CANCELLED' ), true ) ) {
+		// Stay cancelled; skip extra notes if thank-you/webhook already cancelled.
+		if ( ! $already_cancelled ) {
+			$order->update_status(
+				'cancelled',
+				sanitize_text_field( 'Tap payment failed (verified on cancellation).' ) . '<br>Reason:' . $fail_message . $detail_note
+			);
+			$order->update_meta_data( '_tap_fail_message', $fail_message );
+			$order->save();
 		}
-		$fail_message = ( isset( $response->response->message ) && $response->response->message )
-			? $response->response->message
-			: $status;
-		$order->update_status(
-			'cancelled',
-			sanitize_text_field( 'Tap payment failed (verified on cancellation).' ) . '<br>Reason:' . $fail_message . $detail_note
-		);
-		$order->update_meta_data( '_tap_fail_message', $fail_message );
-		$order->save();
-		return;
-	}
 
-	// CAPTURED / AUTHORIZED with amount+currency match — same as webhook/callback success.
-	if ( $amounts_match && 'CAPTURED' === $status ) {
+	} elseif ( $amounts_match && 'CAPTURED' === $status ) {
 		$order->payment_complete( $charge_id );
 		$order->update_status( 'processing', sanitize_text_field( 'Tap payment successful (verified on cancellation)' ) . $detail_note );
-		return;
-	}
 
-	if ( $amounts_match && 'AUTHORIZED' === $status ) {
+	} elseif ( $amounts_match && 'AUTHORIZED' === $status ) {
 		$order->update_status( 'pending', sanitize_text_field( 'Tap payment successful (AUTHORIZED, verified on cancellation)' ) . $detail_note );
-		return;
-	}
 
-	// Amount/currency mismatch on a successful Tap status — refund/void like webhook.
-	if ( ! $amounts_match && 'CAPTURED' === $status ) {
+	} elseif ( ! $amounts_match && 'CAPTURED' === $status ) {
+		// Amount/currency mismatch — refund like webhook/callback.
 		$refund_response = tap_api_request( 'https://api.tap.company/v2/refunds/', $active_sk, array(
 			'method' => 'POST',
 			'body'   => array(
@@ -1501,10 +1489,9 @@ function tap_recheck_charge_on_cancel( $order ) {
 		} else {
 			$order->update_status( 'cancelled', $mismatch_note );
 		}
-		return;
-	}
 
-	if ( ! $amounts_match && 'AUTHORIZED' === $status ) {
+	} elseif ( ! $amounts_match && 'AUTHORIZED' === $status ) {
+		// Amount/currency mismatch — void like webhook/callback.
 		tap_api_request( 'https://api.tap.company/v2/authorize/' . $charge_id . '/void', $active_sk, array(
 			'method' => 'POST',
 			'body'   => '{}',
@@ -1515,23 +1502,18 @@ function tap_recheck_charge_on_cancel( $order ) {
 		} else {
 			$order->update_status( 'cancelled', $mismatch_note );
 		}
-		return;
-	}
 
-	// Other non-success statuses — same as webhook/callback failure.
-	// Skip extra notes when the order was already cancelled by the failure flow.
-	if ( $already_cancelled ) {
-		return;
+	} else {
+		// Other non-success statuses — same as webhook/callback failure.
+		if ( ! $already_cancelled ) {
+			$order->update_status(
+				'cancelled',
+				sanitize_text_field( 'Tap payment failed (verified on cancellation).' ) . '<br>Reason:' . $fail_message . $detail_note
+			);
+			$order->update_meta_data( '_tap_fail_message', $fail_message );
+			$order->save();
+		}
 	}
-	$fail_message = ( isset( $response->response->message ) && $response->response->message )
-		? $response->response->message
-		: $status;
-	$order->update_status(
-		'cancelled',
-		sanitize_text_field( 'Tap payment failed (verified on cancellation).' ) . '<br>Reason:' . $fail_message . $detail_note
-	);
-	$order->update_meta_data( '_tap_fail_message', $fail_message );
-	$order->save();
 }
 
 
